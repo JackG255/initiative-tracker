@@ -138,6 +138,12 @@
     display:flex; align-items:center; gap:5px;
   }
   .chip button{ background:none; border:none; color: var(--parchment-dim); cursor:pointer; font-size:0.8rem; padding:0; }
+  /* Rule-derived chips are recomputed from HP on every render and never stored,
+     so they carry no remove button -- healing is what clears them. */
+  .chip.auto{ background: rgba(201,154,63,0.15); border-color: var(--candle); color: var(--candle); }
+  .chip.auto.down{ background: rgba(13,11,16,0.6); border-color: var(--parchment-dim); color: var(--parchment-dim); }
+  .chip.conc{ background: rgba(58,109,138,0.25); border-color: var(--temp); }
+  .chip-rounds{ color: var(--parchment-dim); font-family:'IBM Plex Mono',monospace; font-size:0.68rem; }
 
   .controls-col{ display:flex; flex-direction:column; gap:4px; flex-shrink:0; }
   .icon-btn{
@@ -158,6 +164,22 @@
   .btn-heal{ background: var(--heal); }
   .btn-temp{ background: var(--temp); }
   .btn-cond{ background: #3a3140; }
+  .btn-conc{ background: var(--temp); }
+  .btn-conc.on{ background: var(--candle); color: var(--ink); }
+
+  .conc-save{
+    display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:6px;
+    background: rgba(201,154,63,0.12); border:1px solid var(--candle);
+    border-radius:5px; padding:6px 9px; font-size:0.8rem; color: var(--candle);
+  }
+  .conc-save .conc-save-text{ flex:1 1 100%; }
+  /* Keep the two answers side by side when the row wraps at phone width. */
+  .conc-save-actions{ display:flex; gap:8px; margin-left:auto; }
+  .conc-save button{
+    border:none; border-radius:4px; padding:4px 11px; font-size:0.78rem; cursor:pointer;
+    color: var(--parchment); background:#3a3140;
+  }
+  .conc-save button.broke{ background: var(--danger); }
 
   .add-cond-input{
     display:none; gap:6px; margin-top:6px;
@@ -168,6 +190,21 @@
     border-radius:4px; padding:5px 8px; font-size:0.85rem;
   }
   .add-cond-input button{ background: #3a3140; color:var(--parchment); border:none; border-radius:4px; padding:5px 10px; }
+  .add-cond-input .cond-rounds{
+    flex:0 0 auto; width:56px; text-align:center;
+    font-family:'IBM Plex Mono',monospace; font-size:0.8rem;
+  }
+
+  .rules-list{ display:flex; flex-direction:column; }
+  .rule-row{
+    display:flex; align-items:flex-start; gap:10px; padding:10px 4px;
+    border-bottom:1px solid var(--card-border); cursor:pointer;
+  }
+  .rule-row:last-child{ border-bottom:none; }
+  .rule-row input{ margin-top:3px; accent-color: var(--candle); flex-shrink:0; }
+  .rule-row-text{ flex:1; min-width:0; }
+  .rule-row-name{ display:block; }
+  .rule-row-hint{ display:block; font-size:0.75rem; color: var(--parchment-dim); margin-top:2px; line-height:1.4; }
 
   .remove-btn{ color: var(--blood-bright); }
 
@@ -360,6 +397,7 @@
       <button class="drawer-tab" data-tab="party" role="tab">Party</button>
       <button class="drawer-tab" data-tab="monster" role="tab">Monster</button>
       <button class="drawer-tab" data-tab="custom" role="tab">Custom</button>
+      <button class="drawer-tab" data-tab="rules" role="tab">Rules</button>
     </div>
     <button class="drawer-close" id="drawerCloseBtn" aria-label="Close">&#10005;</button>
   </div>
@@ -403,6 +441,10 @@
       </div>
       <button class="add-btn" id="addBtn">Add to Encounter</button>
     </section>
+
+    <section class="drawer-panel" data-panel="rules">
+      <div class="rules-list" id="rulesList"></div>
+    </section>
   </div>
 </aside>
 
@@ -420,7 +462,17 @@
 
 <script>
 const STORAGE_KEY = 'encounter-state-v1';
-let state = { combatants: [], currentIndex: 0, round: 1, party: [] };
+// Each automatic rule is opt-out on its own. A missing or unknown key reads as on,
+// so state saved before a rule existed picks it up instead of silently disabling it.
+const RULE_KEYS = ['bloodied', 'unconscious', 'concentration', 'durations'];
+function sanitizeRules(r){
+  const src = (r && typeof r === 'object') ? r : {};
+  const out = {};
+  RULE_KEYS.forEach(k => { out[k] = src[k] !== false; });
+  return out;
+}
+
+let state = { combatants: [], currentIndex: 0, round: 1, party: [], rules: sanitizeRules(null) };
 let editingInitIndex = null;
 
 function sanitizeCombatant(c){
@@ -431,8 +483,21 @@ function sanitizeCombatant(c){
   // Temp HP is kept out of `hp` so the clamp above never promotes a heal
   // overflow into a permanent maxHp. Stored state may predate the field.
   c.tempHp = (Number.isFinite(c.tempHp) && c.tempHp > 0) ? c.tempHp : 0;
-  c.conditions = Array.isArray(c.conditions) ? c.conditions : [];
+  // Conditions were plain strings before durations existed. Upgrade them in place
+  // rather than bumping STORAGE_KEY -- the old shape maps onto the new one without
+  // loss, since "no duration" is exactly "lasts until removed by hand".
+  c.conditions = Array.isArray(c.conditions) ? c.conditions.map(sanitizeCondition).filter(Boolean) : [];
+  c.concentrating = c.concentrating === true;
+  c.concSaveDc = (Number.isFinite(c.concSaveDc) && c.concSaveDc > 0) ? c.concSaveDc : 0;
   return c;
+}
+function sanitizeCondition(cond){
+  if(typeof cond === 'string'){
+    return cond.trim() ? { text: cond.trim(), rounds: null } : null;
+  }
+  if(!cond || typeof cond.text !== 'string' || !cond.text.trim()) return null;
+  const r = Math.floor(cond.rounds);
+  return { text: cond.text.trim(), rounds: (Number.isFinite(r) && r > 0) ? r : null };
 }
 // The roster is user-created and lives in state, so it rides the same save/load
 // path as the encounter. Stored state written before the roster existed has no
@@ -448,6 +513,7 @@ function sanitizeState(){
   state.party = Array.isArray(state.party)
     ? state.party.map(sanitizePartyMember).filter(m => m.name)
     : [];
+  state.rules = sanitizeRules(state.rules);
   if(!Number.isFinite(state.currentIndex)) state.currentIndex = 0;
   if(!Number.isFinite(state.round)) state.round = 1;
 }
@@ -558,6 +624,28 @@ async function loadState(){
   render();
 }
 
+const RULE_LABELS = {
+  bloodied:      ['Mark Bloodied', 'Shows a Bloodied chip at half hit points or less.'],
+  unconscious:   ['Mark Unconscious', 'Shows an Unconscious chip at 0 hit points.'],
+  concentration: ['Concentration saves', 'Track who is concentrating and prompt a CON save when they take damage.'],
+  durations:     ['Condition durations', 'Let a condition run for a number of rounds, ticking down at the end of that combatant\u2019s turn.']
+};
+function renderRules(){
+  const wrap = document.getElementById('rulesList');
+  wrap.innerHTML = RULE_KEYS.map(k => `
+    <label class="rule-row">
+      <input type="checkbox" data-rule="${k}" ${state.rules[k] ? 'checked' : ''}>
+      <span class="rule-row-text">
+        <span class="rule-row-name">${RULE_LABELS[k][0]}</span>
+        <span class="rule-row-hint">${RULE_LABELS[k][1]}</span>
+      </span>
+    </label>`).join('');
+  wrap.querySelectorAll('[data-rule]').forEach(cb => cb.addEventListener('change', () => {
+    state.rules[cb.dataset.rule] = cb.checked;
+    scheduleSave(); render();
+  }));
+}
+
 function sortByInit(){
   state.combatants.sort((a,b)=> b.init - a.init);
 }
@@ -567,6 +655,7 @@ function render(){
   const list = document.getElementById('list');
   document.getElementById('roundDisplay').textContent = 'Round ' + toRoman(state.round);
   renderParty();
+  renderRules();
 
   if(state.combatants.length === 0){
     list.innerHTML = '<div class="empty">No combatants yet. The mist stirs, but nothing waits within it.</div>';
@@ -581,9 +670,32 @@ function render(){
     // "Low" tracks real hit points -- a pile of temp HP shouldn't make a dying
     // combatant read as healthy.
     const lowClass = (c.maxHp > 0 ? (c.hp / c.maxHp) * 100 : 100) <= 30 ? 'low' : '';
-    const chips = (c.conditions||[]).map((cond, ci) =>
-      `<span class="chip">${escapeHtml(cond)}<button data-remove-cond="${i}:${ci}">✕</button></span>`
+    // Bloodied and Unconscious are derived from HP here rather than stored in
+    // `conditions`: they cannot drift out of step with the bar, cannot be removed
+    // by mistake, and a heal clears them on its own. Temp HP is left out of the
+    // fraction for the same reason `lowClass` above ignores it.
+    const auto = [];
+    if(state.rules.unconscious && c.hp === 0){
+      auto.push('<span class="chip auto down">Unconscious</span>');
+    } else if(state.rules.bloodied && c.hp > 0 && c.hp * 2 <= c.maxHp){
+      auto.push('<span class="chip auto">Bloodied</span>');
+    }
+    if(state.rules.concentration && c.concentrating){
+      auto.push('<span class="chip conc">Concentrating</span>');
+    }
+    const chips = auto.join('') + (c.conditions||[]).map((cond, ci) =>
+      `<span class="chip">${escapeHtml(cond.text)}${
+        (state.rules.durations && cond.rounds !== null) ? `<span class="chip-rounds">${cond.rounds}</span>` : ''
+      }<button data-remove-cond="${i}:${ci}">✕</button></span>`
     ).join('');
+    const concSave = (state.rules.concentration && c.concSaveDc) ? `
+        <div class="conc-save">
+          <span class="conc-save-text">Concentration &mdash; CON save DC ${c.concSaveDc}</span>
+          <span class="conc-save-actions">
+            <button data-conc-held="${i}">Held</button>
+            <button class="broke" data-conc-broke="${i}">Broke</button>
+          </span>
+        </div>` : '';
     return `
     <div class="card ${i === state.currentIndex ? 'active' : ''}">
       ${i === editingInitIndex
@@ -599,16 +711,22 @@ function render(){
           <div class="hp-bar-track"><div class="hp-bar-fill ${lowClass}" style="width:${hpPct}%"></div><div class="hp-bar-fill temp" style="width:${tempPct}%"></div></div>
           <span class="hp-text mono-num">${c.hp}/${c.maxHp}${temp > 0 ? ' +' + temp : ''}</span>
         </div>
-        <div class="chips">${chips}</div>
+        <div class="chips">${chips}</div>${concSave}
         <div class="hp-adjust">
           <input type="number" placeholder="amt" id="amt-${i}">
           <button class="btn-dmg" data-dmg="${i}">Dmg</button>
           <button class="btn-heal" data-heal="${i}">Heal</button>
           <button class="btn-temp" data-temp="${i}">Temp</button>
           <button class="btn-cond" data-cond="${i}">+ Cond</button>
+          ${state.rules.concentration
+            ? `<button class="btn-conc ${c.concentrating ? 'on' : ''}" data-conc="${i}">&#9670; Conc</button>`
+            : ''}
         </div>
         <div class="add-cond-input" id="condInput-${i}">
           <input type="text" placeholder="e.g. poisoned" id="condText-${i}">
+          ${state.rules.durations
+            ? `<input type="number" class="cond-rounds" placeholder="rds" id="condRounds-${i}" inputmode="numeric" min="1">`
+            : ''}
           <button data-save-cond="${i}">Add</button>
         </div>
       </div>
@@ -666,6 +784,13 @@ function attachCardListeners(){
     const fromTemp = Math.min(c.tempHp || 0, amt);
     c.tempHp = (c.tempHp || 0) - fromTemp;
     c.hp = Math.max(0, c.hp - (amt - fromTemp));
+    // The DC keys off damage *taken*, so it uses the full amount -- temp HP soaks
+    // the hit but you still took it. Dropping to 0 ends concentration outright,
+    // with no save to make.
+    if(state.rules.concentration && c.concentrating && amt > 0){
+      if(c.hp === 0){ c.concentrating = false; c.concSaveDc = 0; }
+      else c.concSaveDc = Math.max(10, Math.floor(amt / 2));
+    }
     scheduleSave(); render();
   }));
   document.querySelectorAll('[data-heal]').forEach(b => b.addEventListener('click', () => {
@@ -692,10 +817,28 @@ function attachCardListeners(){
     const i = +b.dataset.saveCond;
     const txt = document.getElementById('condText-'+i).value.trim();
     if(txt){
+      const roundsEl = document.getElementById('condRounds-'+i);
+      const rounds = roundsEl ? Math.floor(+roundsEl.value) : 0;
       state.combatants[i].conditions = state.combatants[i].conditions || [];
-      state.combatants[i].conditions.push(txt);
+      state.combatants[i].conditions.push({ text: txt, rounds: rounds > 0 ? rounds : null });
       scheduleSave(); render();
     }
+  }));
+  document.querySelectorAll('[data-conc]').forEach(b => b.addEventListener('click', () => {
+    const c = state.combatants[+b.dataset.conc];
+    c.concentrating = !c.concentrating;
+    if(!c.concentrating) c.concSaveDc = 0;
+    scheduleSave(); render();
+  }));
+  document.querySelectorAll('[data-conc-held]').forEach(b => b.addEventListener('click', () => {
+    state.combatants[+b.dataset.concHeld].concSaveDc = 0;
+    scheduleSave(); render();
+  }));
+  document.querySelectorAll('[data-conc-broke]').forEach(b => b.addEventListener('click', () => {
+    const c = state.combatants[+b.dataset.concBroke];
+    c.concSaveDc = 0;
+    c.concentrating = false;
+    scheduleSave(); render();
   }));
   document.querySelectorAll('[data-remove-cond]').forEach(b => b.addEventListener('click', () => {
     const [i, ci] = b.dataset.removeCond.split(':').map(Number);
@@ -1036,8 +1179,22 @@ document.getElementById('addBtn').addEventListener('click', () => {
   closeDrawer();
 });
 
+// A duration runs out at the end of the turn of whoever carries it, so the tick
+// lands on the combatant being left behind, not the one coming up.
+function tickConditions(i){
+  if(!state.rules.durations) return;
+  const c = state.combatants[i];
+  if(!c) return;
+  c.conditions = c.conditions.filter(cond => {
+    if(cond.rounds === null) return true;
+    cond.rounds--;
+    return cond.rounds > 0;
+  });
+}
+
 document.getElementById('nextBtn').addEventListener('click', () => {
   if(state.combatants.length === 0) return;
+  tickConditions(state.currentIndex);
   state.currentIndex++;
   if(state.currentIndex >= state.combatants.length){
     state.currentIndex = 0;
@@ -1058,7 +1215,8 @@ document.getElementById('resetCancelBtn').addEventListener('click', () => {
 
 document.getElementById('resetConfirmBtn').addEventListener('click', () => {
   // The roster is not part of the encounter -- Reset clears combatants, not the party.
-  state = { combatants: [], currentIndex: 0, round: 1, party: state.party };
+  // Neither the roster nor the rule settings belong to one encounter.
+  state = { combatants: [], currentIndex: 0, round: 1, party: state.party, rules: state.rules };
   editingInitIndex = null;
   document.getElementById('resetConfirmBar').style.display = 'none';
   document.getElementById('mainBar').style.display = 'flex';
