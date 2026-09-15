@@ -122,7 +122,9 @@
   }
   .type-tag{ font-size: 0.7rem; color: var(--parchment-dim); text-transform: uppercase; letter-spacing: 0.08em; }
   .type-tag.pc{ color: #6f9bc9; }
-  .type-tag.monster{ color: var(--blood-bright); }
+  .type-tag.friendly{ color: #6f9f76; }
+  .type-tag.enemy{ color: var(--blood-bright); }
+  .type-tag.neutral{ color: var(--parchment-dim); }
 
   .body-col{ flex:1; min-width:0; }
   .name-row{ display:flex; align-items:baseline; gap:8px; }
@@ -423,8 +425,9 @@
         <input type="text" id="partyName" placeholder="Character name" autocomplete="off">
         <select id="partyType">
           <option value="pc">PC</option>
-          <option value="npc">NPC</option>
-          <option value="monster">Monster</option>
+          <option value="friendly">Friendly</option>
+          <option value="enemy">Enemy</option>
+          <option value="neutral">Neutral</option>
         </select>
         <button class="roll-btn" id="partySaveBtn">+ Save</button>
       </div>
@@ -444,8 +447,9 @@
         <input type="text" name="name" id="inName" placeholder="Name">
         <select id="inType">
           <option value="pc">PC</option>
-          <option value="monster">Monster</option>
-          <option value="npc">NPC</option>
+          <option value="friendly">Friendly</option>
+          <option value="enemy">Enemy</option>
+          <option value="neutral">Neutral</option>
         </select>
       </div>
       <div class="form-row">
@@ -497,6 +501,9 @@ let state = { combatants: [], currentIndex: 0, round: 1, party: [], rules: sanit
 let editingInitIndex = null;
 
 function sanitizeCombatant(c){
+  // Until the rename this was never validated, and it is interpolated into the
+  // card as both a class and its text -- so it is pinned to the known set here.
+  c.type = sanitizeType(c.type, 'neutral');
   c.init = Number.isFinite(c.init) ? c.init : 0;
   c.hp = Number.isFinite(c.hp) ? c.hp : 0;
   c.maxHp = (Number.isFinite(c.maxHp) && c.maxHp > 0) ? c.maxHp : Math.max(c.hp, 1);
@@ -523,11 +530,21 @@ function sanitizeCondition(cond){
 // The roster is user-created and lives in state, so it rides the same save/load
 // path as the encounter. Stored state written before the roster existed has no
 // `party` key at all -- default it here rather than assuming it exists.
-const PARTY_TYPES = ['pc', 'monster', 'npc'];
+// A combatant's type is its disposition, not where its stat block came from --
+// a bandit is an enemy, not a monster.
+const COMBATANT_TYPES = ['pc', 'friendly', 'enemy', 'neutral'];
+// Saved state predates the rename. The mapping is a straight one, so it happens
+// on load rather than costing a STORAGE_KEY bump: "npc" was the catch-all for
+// anyone who was neither the party nor the thing attacking it.
+const LEGACY_TYPES = { monster: 'enemy', npc: 'neutral' };
+function sanitizeType(t, fallback){
+  if(typeof t !== 'string') return fallback;
+  const mapped = LEGACY_TYPES[t] || t;
+  return COMBATANT_TYPES.includes(mapped) ? mapped : fallback;
+}
 function sanitizePartyMember(m){
   const name = (m && typeof m.name === 'string') ? m.name.trim() : '';
-  const type = (m && PARTY_TYPES.includes(m.type)) ? m.type : 'pc';
-  return { name, type };
+  return { name, type: sanitizeType(m && m.type, 'pc') };
 }
 function sanitizeState(){
   state.combatants = state.combatants.map(sanitizeCombatant);
@@ -731,7 +748,7 @@ function render(){
       <div class="body-col">
         <div class="name-row">
           <span class="name">${escapeHtml(c.name)}</span>
-          <span class="type-tag ${c.type}">${c.type}</span>
+          <span class="type-tag ${escapeHtml(c.type)}">${escapeHtml(c.type)}</span>
         </div>
         <div class="hp-row">
           <div class="hp-bar-track"><div class="hp-bar-fill ${lowClass}" style="width:${hpPct}%"></div><div class="hp-bar-fill temp" style="width:${tempPct}%"></div></div>
@@ -1040,7 +1057,7 @@ function addMonsterFromBestiary(m, count) {
       while (existingNames.includes(`${m.name} ${k}`.toLowerCase())) k++;
       name = `${m.name} ${k}`;
     }
-    state.combatants.push({ name, type: 'monster', init: rolledInit, hp: rolledHp, maxHp: rolledHp, tempHp: 0, conditions: [] });
+    state.combatants.push({ name, type: 'enemy', init: rolledInit, hp: rolledHp, maxHp: rolledHp, tempHp: 0, conditions: [] });
   }
   sortByInit();
   document.getElementById('bestiarySearch').value = '';

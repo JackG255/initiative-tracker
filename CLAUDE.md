@@ -61,6 +61,10 @@ place unless asked to remove it.
 - `state.rules` holds the opt-out automatic-rule switches (`RULE_KEYS`). Only an
   explicit `false` disables one, so state saved before a rule existed opts into it.
   Reset preserves `rules` and `party` — neither belongs to a single encounter.
+- A combatant's `type` is its disposition, not its stat-block source:
+  `COMBATANT_TYPES` is pc / friendly / enemy / neutral. `sanitizeType` maps the
+  retired `monster` and `npc` values to enemy and neutral on load, and pins
+  anything unrecognised, since `type` is interpolated into the card.
 - A condition is `{ text, rounds }`, where `rounds: null` means "until removed by
   hand". `sanitizeCondition` upgrades the legacy plain-string form on load.
 - Bloodied and Unconscious are *derived in `render()`* from HP, never stored in
