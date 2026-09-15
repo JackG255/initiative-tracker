@@ -192,6 +192,8 @@
     letter-spacing:0.06em; cursor:pointer;
   }
   .party-btn:disabled{ opacity:0.45; cursor:default; }
+  /* When the row wraps at phone width, Save is alone on line two -- let it fill it. */
+  #partySaveBtn{ flex-grow:1; }
   .party-list{ display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
   .party-member{
     display:flex; align-items:center; gap:8px;
