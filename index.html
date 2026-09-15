@@ -28,6 +28,7 @@
     --ink: #0d0b10;
     --danger: #8a2f2f;
     --heal: #3f6e4f;
+    --temp: #3a6d8a;
   }
   * { box-sizing: border-box; }
   body{
@@ -118,9 +119,12 @@
   .name-row{ display:flex; align-items:baseline; gap:8px; }
   .name{ font-size: 1.15rem; font-weight: 600; }
   .hp-row{ display:flex; align-items:center; gap:8px; margin-top:4px; }
-  .hp-bar-track{ flex:1; height:7px; background:#2a232c; border-radius: 4px; overflow:hidden; }
+  .hp-bar-track{ flex:1; height:7px; background:#2a232c; border-radius: 4px; overflow:hidden; display:flex; }
   .hp-bar-fill{ height:100%; background: var(--heal); transition: width .3s ease, background .3s ease; }
   .hp-bar-fill.low{ background: var(--danger); }
+  /* Temp HP rides past maxHp, so the bar is scaled against maxHp + temp and the
+     overflow segment gets its own colour rather than extending the green. */
+  .hp-bar-fill.temp{ background: var(--temp); }
   .hp-text{ font-size: 0.85rem; color: var(--parchment-dim); white-space:nowrap; }
 
   .chips{ display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
@@ -142,7 +146,7 @@
   }
   .icon-btn:active{ background: var(--card-border); }
 
-  .hp-adjust{ display:flex; gap:6px; margin-top:8px; }
+  .hp-adjust{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .hp-adjust input{
     width: 52px; background: var(--ink); border:1px solid var(--card-border); color: var(--parchment);
     border-radius:4px; padding:5px 6px; font-family:'IBM Plex Mono',monospace; text-align:center;
@@ -152,6 +156,7 @@
   }
   .btn-dmg{ background: var(--danger); }
   .btn-heal{ background: var(--heal); }
+  .btn-temp{ background: var(--temp); }
   .btn-cond{ background: #3a3140; }
 
   .add-cond-input{
@@ -423,6 +428,9 @@ function sanitizeCombatant(c){
   c.hp = Number.isFinite(c.hp) ? c.hp : 0;
   c.maxHp = (Number.isFinite(c.maxHp) && c.maxHp > 0) ? c.maxHp : Math.max(c.hp, 1);
   if(c.hp > c.maxHp) c.maxHp = c.hp;
+  // Temp HP is kept out of `hp` so the clamp above never promotes a heal
+  // overflow into a permanent maxHp. Stored state may predate the field.
+  c.tempHp = (Number.isFinite(c.tempHp) && c.tempHp > 0) ? c.tempHp : 0;
   c.conditions = Array.isArray(c.conditions) ? c.conditions : [];
   return c;
 }
@@ -566,8 +574,13 @@ function render(){
   }
 
   list.innerHTML = state.combatants.map((c, i) => {
-    const hpPct = c.maxHp > 0 ? Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100)) : 100;
-    const lowClass = hpPct <= 30 ? 'low' : '';
+    const temp = c.tempHp || 0;
+    const barTotal = (c.maxHp > 0 ? c.maxHp : 1) + temp;
+    const hpPct = Math.max(0, Math.min(100, (c.hp / barTotal) * 100));
+    const tempPct = Math.max(0, Math.min(100 - hpPct, (temp / barTotal) * 100));
+    // "Low" tracks real hit points -- a pile of temp HP shouldn't make a dying
+    // combatant read as healthy.
+    const lowClass = (c.maxHp > 0 ? (c.hp / c.maxHp) * 100 : 100) <= 30 ? 'low' : '';
     const chips = (c.conditions||[]).map((cond, ci) =>
       `<span class="chip">${escapeHtml(cond)}<button data-remove-cond="${i}:${ci}">✕</button></span>`
     ).join('');
@@ -583,14 +596,15 @@ function render(){
           <span class="type-tag ${c.type}">${c.type}</span>
         </div>
         <div class="hp-row">
-          <div class="hp-bar-track"><div class="hp-bar-fill ${lowClass}" style="width:${hpPct}%"></div></div>
-          <span class="hp-text mono-num">${c.hp}/${c.maxHp}</span>
+          <div class="hp-bar-track"><div class="hp-bar-fill ${lowClass}" style="width:${hpPct}%"></div><div class="hp-bar-fill temp" style="width:${tempPct}%"></div></div>
+          <span class="hp-text mono-num">${c.hp}/${c.maxHp}${temp > 0 ? ' +' + temp : ''}</span>
         </div>
         <div class="chips">${chips}</div>
         <div class="hp-adjust">
           <input type="number" placeholder="amt" id="amt-${i}">
           <button class="btn-dmg" data-dmg="${i}">Dmg</button>
           <button class="btn-heal" data-heal="${i}">Heal</button>
+          <button class="btn-temp" data-temp="${i}">Temp</button>
           <button class="btn-cond" data-cond="${i}">+ Cond</button>
         </div>
         <div class="add-cond-input" id="condInput-${i}">
@@ -647,7 +661,11 @@ function attachCardListeners(){
   document.querySelectorAll('[data-dmg]').forEach(b => b.addEventListener('click', () => {
     const i = +b.dataset.dmg;
     const amt = +document.getElementById('amt-'+i).value || 1;
-    state.combatants[i].hp = Math.max(0, state.combatants[i].hp - amt);
+    const c = state.combatants[i];
+    // Temp HP soaks damage first, as in 5e.
+    const fromTemp = Math.min(c.tempHp || 0, amt);
+    c.tempHp = (c.tempHp || 0) - fromTemp;
+    c.hp = Math.max(0, c.hp - (amt - fromTemp));
     scheduleSave(); render();
   }));
   document.querySelectorAll('[data-heal]').forEach(b => b.addEventListener('click', () => {
@@ -655,6 +673,15 @@ function attachCardListeners(){
     const amt = +document.getElementById('amt-'+i).value || 1;
     const c = state.combatants[i];
     c.hp = Math.min(c.maxHp, c.hp + amt);
+    scheduleSave(); render();
+  }));
+  // Temp HP is granted outright, not earned by overhealing -- a combatant can
+  // pick it up at any HP, so it gets its own button rather than riding on Heal.
+  document.querySelectorAll('[data-temp]').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.temp;
+    const amt = +document.getElementById('amt-'+i).value || 1;
+    const c = state.combatants[i];
+    c.tempHp = Math.max(0, (c.tempHp || 0) + amt);
     scheduleSave(); render();
   }));
   document.querySelectorAll('[data-cond]').forEach(b => b.addEventListener('click', () => {
@@ -844,7 +871,7 @@ function addMonsterFromBestiary(m, count) {
       while (existingNames.includes(`${m.name} ${k}`.toLowerCase())) k++;
       name = `${m.name} ${k}`;
     }
-    state.combatants.push({ name, type: 'monster', init: rolledInit, hp: rolledHp, maxHp: rolledHp, conditions: [] });
+    state.combatants.push({ name, type: 'monster', init: rolledInit, hp: rolledHp, maxHp: rolledHp, tempHp: 0, conditions: [] });
   }
   sortByInit();
   document.getElementById('bestiarySearch').value = '';
@@ -983,7 +1010,7 @@ document.getElementById('addPartyBtn').addEventListener('click', () => {
   const existingNames = new Set(state.combatants.map(c => c.name.trim().toLowerCase()));
   state.party.forEach(p => {
     if(existingNames.has(p.name.toLowerCase())) return;
-    state.combatants.push({ name: p.name, type: p.type, init: 0, hp: 0, maxHp: 1, conditions: [] });
+    state.combatants.push({ name: p.name, type: p.type, init: 0, hp: 0, maxHp: 1, tempHp: 0, conditions: [] });
   });
   sortByInit();
   scheduleSave(); render();
@@ -1000,7 +1027,7 @@ document.getElementById('addBtn').addEventListener('click', () => {
   const init = +document.getElementById('inInit').value || 0;
   const hp = +document.getElementById('inHp').value || 0;
   if(!name) return;
-  state.combatants.push({ name, type, init, hp, maxHp: hp || 1, conditions: [] });
+  state.combatants.push({ name, type, init, hp, maxHp: hp || 1, tempHp: 0, conditions: [] });
   sortByInit();
   document.getElementById('inName').value = '';
   document.getElementById('inInit').value = '';

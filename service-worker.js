@@ -1,5 +1,5 @@
 // Bump this when index.html/manifest/icons change, so old caches get cleared.
-const CACHE_NAME = 'initiative-tracker-v3';
+const CACHE_NAME = 'initiative-tracker-v5';
 const APP_SHELL = [
   './',
   './index.html',
