@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Initiative Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#121016">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Initiative">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #121016;
+    --bg-vignette: radial-gradient(ellipse at 50% -10%, #241c26 0%, #121016 55%);
+    --card: #1c1820;
+    --card-border: #332a38;
+    --parchment: #e8e1d0;
+    --parchment-dim: #b8ae9c;
+    --blood: #7a1f2b;
+    --blood-bright: #a8324a;
+    --candle: #c99a3f;
+    --candle-glow: rgba(201,154,63,0.55);
+    --ink: #0d0b10;
+    --danger: #8a2f2f;
+    --heal: #3f6e4f;
+  }
+  * { box-sizing: border-box; }
+  body{
+    margin:0;
+    min-height:100vh;
+    background: var(--bg-vignette);
+    color: var(--parchment);
+    font-family: 'EB Garamond', serif;
+    padding: 18px 14px 90px;
+  }
+  h1,h2,.mono{ font-family: 'Cinzel', serif; letter-spacing: 0.04em; }
+  .mono-num{ font-family: 'IBM Plex Mono', monospace; }
+
+  header{ text-align:center; margin-bottom: 18px; }
+  header .title{
+    font-size: 1.05rem;
+    color: var(--parchment-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    margin: 0 0 6px;
+  }
+  header .round{
+    font-size: 2.1rem;
+    font-weight: 700;
+    color: var(--candle);
+    text-shadow: 0 0 14px var(--candle-glow);
+    margin: 0;
+  }
+
+  .list{ display:flex; flex-direction:column; gap: 10px; max-width: 560px; margin: 0 auto; }
+
+  .card{
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    display:flex;
+    align-items:center;
+    gap: 12px;
+    position: relative;
+    transition: box-shadow .4s ease, border-color .4s ease, transform .2s ease;
+  }
+  .card.active{
+    border-color: var(--candle);
+    box-shadow: 0 0 0 1px var(--candle-glow), 0 0 22px var(--candle-glow);
+    animation: flicker 2.6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce){ .card.active{ animation: none; } }
+  @keyframes flicker{
+    0%,100%{ box-shadow: 0 0 0 1px var(--candle-glow), 0 0 22px var(--candle-glow); }
+    50%{ box-shadow: 0 0 0 1px var(--candle-glow), 0 0 12px var(--candle-glow); }
+  }
+
+  .init-badge{
+    min-width: 40px;
+    text-align:center;
+    font-size: 1.3rem;
+    color: var(--ink);
+    background: var(--parchment);
+    border-radius: 5px;
+    padding: 4px 2px;
+    flex-shrink:0;
+    border: none;
+    font-family: 'IBM Plex Mono', monospace;
+    cursor: pointer;
+  }
+  .init-badge:active{ background: var(--candle); }
+  .init-edit{
+    width: 46px;
+    text-align:center;
+    font-size: 1.15rem;
+    color: var(--ink);
+    background: var(--candle);
+    border: 2px solid var(--ink);
+    border-radius: 5px;
+    padding: 3px 2px;
+    flex-shrink:0;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .type-tag{ font-size: 0.7rem; color: var(--parchment-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+  .type-tag.pc{ color: #6f9bc9; }
+  .type-tag.monster{ color: var(--blood-bright); }
+
+  .body-col{ flex:1; min-width:0; }
+  .name-row{ display:flex; align-items:baseline; gap:8px; }
+  .name{ font-size: 1.15rem; font-weight: 600; }
+  .hp-row{ display:flex; align-items:center; gap:8px; margin-top:4px; }
+  .hp-bar-track{ flex:1; height:7px; background:#2a232c; border-radius: 4px; overflow:hidden; }
+  .hp-bar-fill{ height:100%; background: var(--heal); transition: width .3s ease, background .3s ease; }
+  .hp-bar-fill.low{ background: var(--danger); }
+  .hp-text{ font-size: 0.85rem; color: var(--parchment-dim); white-space:nowrap; }
+
+  .chips{ display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+  .chip{
+    background: rgba(122,31,43,0.25);
+    border: 1px solid var(--blood);
+    color: var(--parchment);
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    display:flex; align-items:center; gap:5px;
+  }
+  .chip button{ background:none; border:none; color: var(--parchment-dim); cursor:pointer; font-size:0.8rem; padding:0; }
+
+  .controls-col{ display:flex; flex-direction:column; gap:4px; flex-shrink:0; }
+  .icon-btn{
+    background: none; border: 1px solid var(--card-border); color: var(--parchment-dim);
+    width: 30px; height: 26px; border-radius:4px; cursor:pointer; font-size:0.85rem;
+  }
+  .icon-btn:active{ background: var(--card-border); }
+
+  .hp-adjust{ display:flex; gap:6px; margin-top:8px; }
+  .hp-adjust input{
+    width: 52px; background: var(--ink); border:1px solid var(--card-border); color: var(--parchment);
+    border-radius:4px; padding:5px 6px; font-family:'IBM Plex Mono',monospace; text-align:center;
+  }
+  .hp-adjust button{
+    border:none; border-radius:4px; padding: 5px 10px; font-size:0.8rem; cursor:pointer; color:var(--parchment);
+  }
+  .btn-dmg{ background: var(--danger); }
+  .btn-heal{ background: var(--heal); }
+  .btn-cond{ background: #3a3140; }
+
+  .add-cond-input{
+    display:none; gap:6px; margin-top:6px;
+  }
+  .add-cond-input.open{ display:flex; }
+  .add-cond-input input{
+    flex:1; background: var(--ink); border:1px solid var(--card-border); color: var(--parchment);
+    border-radius:4px; padding:5px 8px; font-size:0.85rem;
+  }
+  .add-cond-input button{ background: #3a3140; color:var(--parchment); border:none; border-radius:4px; padding:5px 10px; }
+
+  .remove-btn{ color: var(--blood-bright); }
+
+  /* Add combatant form */
+  .add-form{
+    max-width: 560px; margin: 18px auto 0; background: var(--card); border:1px solid var(--card-border);
+    border-radius:6px; padding: 14px;
+  }
+  .add-form h2{ font-size: 0.95rem; margin: 0 0 10px; color: var(--parchment-dim); text-transform:uppercase; letter-spacing:0.12em; }
+  .form-row{ display:flex; gap:8px; margin-bottom:8px; flex-wrap: wrap; }
+  .form-row input, .form-row select{
+    background: var(--ink); border: 1px solid var(--card-border); color: var(--parchment);
+    border-radius:4px; padding:8px 10px; font-family: 'EB Garamond', serif; font-size:1rem;
+  }
+  .form-row input[name="name"]{ flex: 2; min-width: 120px; }
+  .form-row input[name="init"]{ width: 70px; }
+  .form-row input[name="hp"]{ width: 70px; }
+  .form-row select{ flex:1; min-width: 90px; }
+  .roll-btn{
+    background: #3a3140; color: var(--candle); border: 1px solid var(--candle); border-radius:4px;
+    padding: 8px 10px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:0.85rem;
+  }
+  .add-btn{
+    width:100%; background: var(--blood); color: var(--parchment); border:none; border-radius:5px;
+    padding: 11px; font-size: 1rem; font-family:'Cinzel',serif; letter-spacing:0.06em; cursor:pointer;
+  }
+  .party-btn{
+    width:100%; background: #3a3140; color: var(--candle); border: 1px solid var(--candle);
+    border-radius:5px; padding: 11px; font-size: 1rem; font-family:'Cinzel',serif;
+    letter-spacing:0.06em; cursor:pointer;
+  }
+
+  #bestiarySearch{
+    width:100%; background: var(--ink); border: 1px solid var(--card-border); color: var(--parchment);
+    border-radius:4px; padding:9px 10px; font-family:'EB Garamond',serif; font-size:1rem;
+  }
+  .bestiary-results{ margin-top:8px; display:flex; flex-direction:column; gap:6px; max-height:300px; overflow-y:auto; }
+  .bestiary-item{
+    display:flex; align-items:center; gap:8px;
+    background: var(--ink); border:1px solid var(--card-border); border-radius:5px;
+    padding:8px 10px;
+  }
+  .bestiary-item-main{
+    display:flex; flex-direction:column; gap:2px; min-width:0; flex:1;
+    background:none; border:none; text-align:left; cursor:pointer; color: var(--parchment);
+    font-family: 'EB Garamond', serif; padding:0;
+  }
+  .bestiary-item-main:active{ opacity:0.75; }
+  .bestiary-item-name{ font-size:0.95rem; }
+  .bestiary-item-meta{ font-size:0.72rem; color: var(--parchment-dim); }
+  .bestiary-item-source{ font-size:0.68rem; color: var(--candle); }
+  .bestiary-qty{
+    width: 44px; flex-shrink:0; background: var(--card); border:1px solid var(--card-border);
+    color: var(--parchment); border-radius:4px; padding:6px 4px; text-align:center;
+    font-family:'IBM Plex Mono',monospace; font-size:0.9rem;
+  }
+  .bestiary-add-btn{
+    flex-shrink:0; background: var(--blood); color: var(--parchment); border:none;
+    border-radius:4px; padding:8px 12px; font-family:'Cinzel',serif; font-size:0.78rem;
+    letter-spacing:0.04em; cursor:pointer;
+  }
+  .bestiary-add-btn:active{ background: var(--blood-bright); }
+  .bestiary-status{ font-size:0.78rem; color: var(--parchment-dim); margin-top:6px; min-height: 1em; }
+  .bestiary-status.error{ color: var(--blood-bright); }
+  .bestiary-attribution{ font-size:0.68rem; color: var(--parchment-dim); margin-top:8px; opacity:0.75; }
+  .bestiary-attribution a{ color: var(--candle); }
+
+  .bottom-bar{
+    position: fixed; bottom:0; left:0; right:0;
+    background: linear-gradient(180deg, transparent, var(--bg) 30%);
+    padding: 20px 14px 16px;
+    display:flex; gap:10px; justify-content:center;
+  }
+  .bottom-bar button{
+    font-family:'Cinzel',serif; letter-spacing:0.05em; border:none; border-radius:6px; cursor:pointer;
+    padding: 13px 18px; font-size: 0.95rem;
+  }
+  .btn-next{ background: var(--candle); color: var(--ink); flex:1; max-width:280px; font-weight:700; }
+  .btn-reset{ background: transparent; color: var(--parchment-dim); border: 1px solid var(--card-border) !important; }
+  .btn-reset-confirm{ background: var(--blood); color: var(--parchment); }
+  .reset-confirm-text{
+    align-self:center; color: var(--parchment-dim); font-size: 0.9rem; margin-right: 4px;
+  }
+
+  .empty{ text-align:center; color: var(--parchment-dim); padding: 30px 10px; font-style: italic; }
+
+  .persist-banner{
+    display:none;
+    max-width: 560px; margin: 0 auto 14px;
+    background: rgba(122,31,43,0.18);
+    border: 1px solid var(--blood);
+    color: var(--parchment-dim);
+    font-size: 0.82rem;
+    padding: 8px 12px;
+    border-radius: 5px;
+    text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="title">Initiative Tracker</p>
+  <h1 class="round" id="roundDisplay">Round I</h1>
+</header>
+
+<div class="persist-banner" id="persistBanner">
+  Changes aren't saving right now — the tracker still works, but a reload will lose this encounter. Keep this tab open.
+</div>
+
+<div class="list" id="list"></div>
+
+<div class="add-form">
+  <button class="party-btn" id="addPartyBtn">⚔ Add the Party</button>
+</div>
+
+<div class="add-form">
+  <h2>Add Monster</h2>
+  <div class="form-row">
+    <input type="text" id="bestiarySearch" placeholder="Search a monster… (e.g. wolf)" autocomplete="off">
+  </div>
+  <div id="bestiaryResults" class="bestiary-results"></div>
+  <div id="bestiaryStatus" class="bestiary-status"></div>
+  <div class="bestiary-attribution">Monster search via <a href="https://open5e.com" target="_blank" rel="noopener">Open5e</a>. Includes material from the D&amp;D SRD, © Wizards of the Coast, CC-BY-4.0.</div>
+</div>
+
+<div class="add-form">
+  <h2>Add Combatant</h2>
+  <div class="form-row">
+    <input type="text" name="name" id="inName" placeholder="Name">
+    <select id="inType">
+      <option value="pc">PC</option>
+      <option value="monster">Monster</option>
+      <option value="npc">NPC</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <input type="number" name="init" id="inInit" placeholder="Init">
+    <button class="roll-btn" id="rollBtn">🎲 d20</button>
+    <input type="number" name="hp" id="inHp" placeholder="HP">
+  </div>
+  <button class="add-btn" id="addBtn">Add to Encounter</button>
+</div>
+
+<div class="bottom-bar" id="resetConfirmBar" style="display:none;">
+  <span class="reset-confirm-text">Clear the whole encounter?</span>
+  <button class="btn-reset" id="resetCancelBtn">Cancel</button>
+  <button class="btn-reset-confirm" id="resetConfirmBtn">Yes, clear it</button>
+</div>
+
+<div class="bottom-bar" id="mainBar">
+  <button class="btn-reset" id="resetBtn">Reset</button>
+  <button class="btn-next" id="nextBtn">Next Turn ▸</button>
+</div>
+
+<script>
+const STORAGE_KEY = 'encounter-state-v1';
+let state = { combatants: [], currentIndex: 0, round: 1 };
+let editingInitIndex = null;
+
+function sanitizeCombatant(c){
+  c.init = Number.isFinite(c.init) ? c.init : 0;
+  c.hp = Number.isFinite(c.hp) ? c.hp : 0;
+  c.maxHp = (Number.isFinite(c.maxHp) && c.maxHp > 0) ? c.maxHp : Math.max(c.hp, 1);
+  if(c.hp > c.maxHp) c.maxHp = c.hp;
+  c.conditions = Array.isArray(c.conditions) ? c.conditions : [];
+  return c;
+}
+function sanitizeState(){
+  state.combatants = state.combatants.map(sanitizeCombatant);
+  if(!Number.isFinite(state.currentIndex)) state.currentIndex = 0;
+  if(!Number.isFinite(state.round)) state.round = 1;
+}
+
+const romanMap = [[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']];
+function toRoman(n){
+  let res=''; for(const [v,s] of romanMap){ while(n>=v){ res+=s; n-=v; } } return res || 'I';
+}
+
+let persistenceOk = true;
+let saveRetryTimer = null;
+let saveDebounceTimer = null;
+let saveInFlight = false;
+let savePending = false;
+
+function setPersistenceBanner(ok){
+  const el = document.getElementById('persistBanner');
+  if(!el) return;
+  el.style.display = ok ? 'none' : 'block';
+}
+
+function hasLocalStorage(){
+  try{
+    const t = '__test__';
+    window.localStorage.setItem(t, '1');
+    window.localStorage.removeItem(t);
+    return true;
+  }catch(e){ return false; }
+}
+
+function scheduleSave(){
+  clearTimeout(saveDebounceTimer);
+  saveDebounceTimer = setTimeout(saveStateNow, 300);
+}
+
+async function saveStateNow(){
+  sanitizeState();
+
+  if(!window.storage){
+    // Standalone file (opened outside Claude.ai) -- fall back to this browser's
+    // localStorage. Note: this only persists on this device/browser, not across others.
+    if(hasLocalStorage()){
+      try{
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        persistenceOk = true;
+        setPersistenceBanner(true);
+      }catch(e){
+        console.error('localStorage save failed', e);
+        persistenceOk = false;
+        setPersistenceBanner(false);
+      }
+    } else {
+      persistenceOk = false;
+      setPersistenceBanner(false);
+    }
+    return;
+  }
+
+  if(saveInFlight){ savePending = true; return; }
+  saveInFlight = true;
+  try{
+    const res = await window.storage.set(STORAGE_KEY, JSON.stringify(state), false);
+    if(res){
+      persistenceOk = true;
+      setPersistenceBanner(true);
+    } else {
+      throw new Error('empty response');
+    }
+  }catch(e){
+    console.error('save failed', e);
+    persistenceOk = false;
+    setPersistenceBanner(false);
+    clearTimeout(saveRetryTimer);
+    saveRetryTimer = setTimeout(scheduleSave, 3000);
+  }finally{
+    saveInFlight = false;
+    if(savePending){ savePending = false; scheduleSave(); }
+  }
+}
+
+async function loadState(){
+  if(!window.storage){
+    // Standalone file context -- read from localStorage instead.
+    if(hasLocalStorage()){
+      try{
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if(raw){ state = JSON.parse(raw); }
+        setPersistenceBanner(true);
+      }catch(e){
+        console.error('localStorage load failed', e);
+        setPersistenceBanner(false);
+      }
+    } else {
+      setPersistenceBanner(false);
+    }
+    sanitizeState();
+    render();
+    return;
+  }
+  try{
+    const res = await window.storage.get(STORAGE_KEY, false);
+    if(res && res.value){ state = JSON.parse(res.value); }
+    setPersistenceBanner(true);
+  }catch(e){
+    // No saved state yet is expected (throws on missing key).
+  }
+  sanitizeState();
+  render();
+}
+
+function sortByInit(){
+  state.combatants.sort((a,b)=> b.init - a.init);
+}
+
+function render(){
+  sanitizeState();
+  const list = document.getElementById('list');
+  document.getElementById('roundDisplay').textContent = 'Round ' + toRoman(state.round);
+
+  if(state.combatants.length === 0){
+    list.innerHTML = '<div class="empty">No combatants yet. The mist stirs, but nothing waits within it.</div>';
+    return;
+  }
+
+  list.innerHTML = state.combatants.map((c, i) => {
+    const hpPct = c.maxHp > 0 ? Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100)) : 100;
+    const lowClass = hpPct <= 30 ? 'low' : '';
+    const chips = (c.conditions||[]).map((cond, ci) =>
+      `<span class="chip">${escapeHtml(cond)}<button data-remove-cond="${i}:${ci}">✕</button></span>`
+    ).join('');
+    return `
+    <div class="card ${i === state.currentIndex ? 'active' : ''}">
+      ${i === editingInitIndex
+        ? `<input type="number" class="init-edit mono-num" id="initEdit-${i}" value="${c.init}" inputmode="numeric">`
+        : `<button class="init-badge mono-num" data-edit-init="${i}">${c.init}</button>`
+      }
+      <div class="body-col">
+        <div class="name-row">
+          <span class="name">${escapeHtml(c.name)}</span>
+          <span class="type-tag ${c.type}">${c.type}</span>
+        </div>
+        <div class="hp-row">
+          <div class="hp-bar-track"><div class="hp-bar-fill ${lowClass}" style="width:${hpPct}%"></div></div>
+          <span class="hp-text mono-num">${c.hp}/${c.maxHp}</span>
+        </div>
+        <div class="chips">${chips}</div>
+        <div class="hp-adjust">
+          <input type="number" placeholder="amt" id="amt-${i}">
+          <button class="btn-dmg" data-dmg="${i}">Dmg</button>
+          <button class="btn-heal" data-heal="${i}">Heal</button>
+          <button class="btn-cond" data-cond="${i}">+ Cond</button>
+        </div>
+        <div class="add-cond-input" id="condInput-${i}">
+          <input type="text" placeholder="e.g. poisoned" id="condText-${i}">
+          <button data-save-cond="${i}">Add</button>
+        </div>
+      </div>
+      <div class="controls-col">
+        <button class="icon-btn" data-up="${i}">▲</button>
+        <button class="icon-btn" data-down="${i}">▼</button>
+        <button class="icon-btn remove-btn" data-remove="${i}">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  attachCardListeners();
+
+  if(editingInitIndex !== null){
+    const inp = document.getElementById('initEdit-' + editingInitIndex);
+    if(inp){ inp.focus(); inp.select(); }
+  }
+}
+
+function commitInitEdit(i){
+  const input = document.getElementById('initEdit-' + i);
+  if(!input){ editingInitIndex = null; return; }
+  const val = parseInt(input.value, 10);
+  const activeCombatant = state.combatants[state.currentIndex];
+  if(Number.isFinite(val)) state.combatants[i].init = val;
+  sortByInit();
+  const newIndex = state.combatants.indexOf(activeCombatant);
+  state.currentIndex = newIndex >= 0 ? newIndex : 0;
+  editingInitIndex = null;
+  scheduleSave(); render();
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+}
+
+function attachCardListeners(){
+  document.querySelectorAll('[data-edit-init]').forEach(b => b.addEventListener('click', () => {
+    editingInitIndex = +b.dataset.editInit;
+    render();
+  }));
+  document.querySelectorAll('.init-edit').forEach(inp => {
+    const i = +inp.id.replace('initEdit-', '');
+    inp.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter'){ inp.blur(); commitInitEdit(i); }
+      if(e.key === 'Escape'){ editingInitIndex = null; render(); }
+    });
+    inp.addEventListener('blur', () => commitInitEdit(i));
+  });
+  document.querySelectorAll('[data-dmg]').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.dmg;
+    const amt = +document.getElementById('amt-'+i).value || 1;
+    state.combatants[i].hp = Math.max(0, state.combatants[i].hp - amt);
+    scheduleSave(); render();
+  }));
+  document.querySelectorAll('[data-heal]').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.heal;
+    const amt = +document.getElementById('amt-'+i).value || 1;
+    const c = state.combatants[i];
+    c.hp = Math.min(c.maxHp, c.hp + amt);
+    scheduleSave(); render();
+  }));
+  document.querySelectorAll('[data-cond]').forEach(b => b.addEventListener('click', () => {
+    const el = document.getElementById('condInput-'+b.dataset.cond);
+    el.classList.toggle('open');
+  }));
+  document.querySelectorAll('[data-save-cond]').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.saveCond;
+    const txt = document.getElementById('condText-'+i).value.trim();
+    if(txt){
+      state.combatants[i].conditions = state.combatants[i].conditions || [];
+      state.combatants[i].conditions.push(txt);
+      scheduleSave(); render();
+    }
+  }));
+  document.querySelectorAll('[data-remove-cond]').forEach(b => b.addEventListener('click', () => {
+    const [i, ci] = b.dataset.removeCond.split(':').map(Number);
+    state.combatants[i].conditions.splice(ci, 1);
+    scheduleSave(); render();
+  }));
+  document.querySelectorAll('[data-up]').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.up;
+    if(i > 0){
+      swapAndFixActive(i, i-1);
+      scheduleSave(); render();
+    }
+  }));
+  document.querySelectorAll('[data-down]').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.down;
+    if(i < state.combatants.length - 1){
+      swapAndFixActive(i, i+1);
+      scheduleSave(); render();
+    }
+  }));
+  document.querySelectorAll('[data-remove]').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.remove;
+    state.combatants.splice(i, 1);
+    if(state.currentIndex > i) state.currentIndex--;
+    if(state.currentIndex >= state.combatants.length) state.currentIndex = 0;
+    scheduleSave(); render();
+  }));
+}
+
+function swapAndFixActive(i, j){
+  const tmp = state.combatants[i];
+  state.combatants[i] = state.combatants[j];
+  state.combatants[j] = tmp;
+  if(state.currentIndex === i) state.currentIndex = j;
+  else if(state.currentIndex === j) state.currentIndex = i;
+}
+
+// --- Dice formula roller, e.g. "6d10+40" or "2d8-2" ---
+function rollDiceFormula(formula) {
+  if (!formula) return null;
+  const cleaned = String(formula).replace(/\s+/g, '').toLowerCase();
+  const termRegex = /([+-]?)(\d*d\d+|\d+)/g;
+  let total = 0, matched = false, m;
+  while ((m = termRegex.exec(cleaned))) {
+    matched = true;
+    const sign = m[1] === '-' ? -1 : 1;
+    const token = m[2];
+    if (token.includes('d')) {
+      const [numStr, sidesStr] = token.split('d');
+      const num = numStr === '' ? 1 : parseInt(numStr, 10);
+      const sides = parseInt(sidesStr, 10);
+      for (let i = 0; i < num; i++) total += sign * (Math.floor(Math.random() * sides) + 1);
+    } else {
+      total += sign * parseInt(token, 10);
+    }
+  }
+  return matched ? Math.max(1, total) : null;
+}
+
+// --- Live search against the Open5e v2 API ---
+// Official Wizards-published sources get priority in results over third-party OGL books,
+// since those are what most people expect to find first.
+const CORE_DOCUMENT_KEYS = ['srd-2024', 'srd-2014', 'wotc-srd'];
+
+// Compact abbreviated codes for source books, in the style used by D&D Beyond
+// (e.g. "MM'25", "ToB"). Falls back to auto-generated initials for anything unmapped.
+const DOCUMENT_ABBREV = {
+  'srd-2024': "MM'25 (SRD)",
+  'srd-2014': "MM'14 (SRD)",
+  'wotc-srd': "MM'14 (SRD)",
+  'a5e-mm': 'A5E MM',
+  'menagerie': 'A5E MM',
+  'tob': 'ToB',
+  'tob2': 'ToB2',
+  'tob3': 'ToB3',
+  'tob-2023': 'ToB',
+  'cc': 'CC',
+  'blackflag': 'BFRD',
+  'bfrd': 'BFRD'
+};
+
+function abbreviateSource(key, fullName) {
+  if (key && DOCUMENT_ABBREV[key]) return DOCUMENT_ABBREV[key];
+  if (!fullName) return key || '?';
+  const initials = fullName.split(/\s+/).filter(w => /^[A-Z]/.test(w)).map(w => w[0]).join('');
+  return initials.length >= 2 ? initials : fullName.slice(0, 8);
+}
+
+async function searchLiveBestiary(query) {
+  const url = 'https://api.open5e.com/v2/creatures/?name__icontains=' +
+    encodeURIComponent(query) + '&limit=50&fields=name,hit_dice,modifiers,challenge_rating,document';
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('bad response');
+  const data = await res.json();
+  const all = (data.results || []).map(c => {
+    const key = c.document ? c.document.key : null;
+    return {
+      name: c.name,
+      hitDice: c.hit_dice,
+      dexMod: c.modifiers ? c.modifiers.dexterity : 0,
+      cr: c.challenge_rating,
+      source: abbreviateSource(key, c.document ? c.document.name : null),
+      sourceKey: key
+    };
+  });
+
+  // De-dupe identical name+source pairs, then sort: core rulebooks first (in the
+  // priority order above), then everything else alphabetically by source, then by name.
+  const seen = new Set();
+  const deduped = all.filter(m => {
+    const k = m.name + '|' + m.sourceKey;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  deduped.sort((a, b) => {
+    const aCore = CORE_DOCUMENT_KEYS.indexOf(a.sourceKey);
+    const bCore = CORE_DOCUMENT_KEYS.indexOf(b.sourceKey);
+    const aRank = aCore === -1 ? CORE_DOCUMENT_KEYS.length : aCore;
+    const bRank = bCore === -1 ? CORE_DOCUMENT_KEYS.length : bCore;
+    if (aRank !== bRank) return aRank - bRank;
+    if (a.source !== b.source) return (a.source || '').localeCompare(b.source || '');
+    return a.name.localeCompare(b.name);
+  });
+
+  return deduped.slice(0, 16);
+}
+
+let bestiaryDebounce = null;
+function renderBestiaryResults(items, sourceLabel) {
+  const box = document.getElementById('bestiaryResults');
+  if (!items.length) { box.innerHTML = ''; return; }
+  box.innerHTML = items.map((m, i) => `
+    <div class="bestiary-item">
+      <button class="bestiary-item-main" data-bestiary-index="${i}">
+        <span class="bestiary-item-name">${escapeHtml(m.name)}</span>
+        <span class="bestiary-item-meta">CR ${m.cr ?? '?'} · ${escapeHtml(m.hitDice || '—')}</span>
+        <span class="bestiary-item-source">${escapeHtml(m.source || sourceLabel)}</span>
+      </button>
+      <input type="number" class="bestiary-qty" id="bestiaryQty-${i}" value="1" min="1" max="20" inputmode="numeric">
+      <button class="bestiary-add-btn" data-bestiary-add="${i}">Add</button>
+    </div>
+  `).join('');
+  window.__bestiaryLastResults = items;
+  // Tapping the name/CR area adds one immediately (fast path for a single creature).
+  document.querySelectorAll('[data-bestiary-index]').forEach(b => {
+    b.addEventListener('click', () => {
+      const m = window.__bestiaryLastResults[+b.dataset.bestiaryIndex];
+      addMonsterFromBestiary(m, 1);
+    });
+  });
+  // The Add button respects whatever quantity is in the adjacent field.
+  document.querySelectorAll('[data-bestiary-add]').forEach(b => {
+    b.addEventListener('click', () => {
+      const i = +b.dataset.bestiaryAdd;
+      const m = window.__bestiaryLastResults[i];
+      const qtyInput = document.getElementById('bestiaryQty-' + i);
+      const qty = Math.max(1, Math.min(20, +qtyInput.value || 1));
+      addMonsterFromBestiary(m, qty);
+    });
+  });
+}
+
+function addMonsterFromBestiary(m, count) {
+  const n = Math.max(1, count || 1);
+  for (let i = 0; i < n; i++) {
+    const rolledHp = rollDiceFormula(m.hitDice) || 1;
+    const rolledInit = Math.floor(Math.random() * 20) + 1 + (m.dexMod || 0);
+    const existingNames = state.combatants.map(c => c.name.toLowerCase());
+    let name = m.name;
+    if (existingNames.includes(name.toLowerCase())) {
+      let k = 2;
+      while (existingNames.includes(`${m.name} ${k}`.toLowerCase())) k++;
+      name = `${m.name} ${k}`;
+    }
+    state.combatants.push({ name, type: 'monster', init: rolledInit, hp: rolledHp, maxHp: rolledHp, conditions: [] });
+  }
+  sortByInit();
+  document.getElementById('bestiarySearch').value = '';
+  document.getElementById('bestiaryResults').innerHTML = '';
+  document.getElementById('bestiaryStatus').textContent = '';
+  scheduleSave(); render();
+}
+
+document.getElementById('bestiarySearch').addEventListener('input', (e) => {
+  const query = e.target.value;
+  clearTimeout(bestiaryDebounce);
+  const statusEl = document.getElementById('bestiaryStatus');
+  if (!query.trim()) {
+    document.getElementById('bestiaryResults').innerHTML = '';
+    statusEl.textContent = '';
+    return;
+  }
+  bestiaryDebounce = setTimeout(async () => {
+    statusEl.textContent = 'Searching…';
+    statusEl.classList.remove('error');
+    try {
+      const results = await searchLiveBestiary(query);
+      document.getElementById('bestiaryResults').innerHTML = '';
+      if (results.length) {
+        renderBestiaryResults(results, 'Open5e');
+        statusEl.textContent = '';
+      } else {
+        statusEl.textContent = 'No matches — add it manually below instead.';
+      }
+    } catch (err) {
+      document.getElementById('bestiaryResults').innerHTML = '';
+      statusEl.textContent = "Can't reach the live bestiary right now — add it manually below instead.";
+      statusEl.classList.add('error');
+    }
+  }, 400);
+});
+
+
+const PARTY_ROSTER = [
+  { name: 'Edmund', type: 'pc' },
+  { name: 'Futrimus', type: 'pc' },
+  { name: 'Zaryth', type: 'pc' },
+  { name: 'Zarvex', type: 'pc' },
+  { name: 'Aldric', type: 'pc' },
+  { name: 'Ireena', type: 'npc' }
+];
+
+document.getElementById('addPartyBtn').addEventListener('click', () => {
+  const existingNames = new Set(state.combatants.map(c => c.name.trim().toLowerCase()));
+  PARTY_ROSTER.forEach(p => {
+    if(existingNames.has(p.name.toLowerCase())) return;
+    state.combatants.push({ name: p.name, type: p.type, init: 0, hp: 0, maxHp: 1, conditions: [] });
+  });
+  sortByInit();
+  scheduleSave(); render();
+});
+
+document.getElementById('rollBtn').addEventListener('click', () => {
+  document.getElementById('inInit').value = Math.floor(Math.random()*20) + 1;
+});
+
+document.getElementById('addBtn').addEventListener('click', () => {
+  const name = document.getElementById('inName').value.trim();
+  const type = document.getElementById('inType').value;
+  const init = +document.getElementById('inInit').value || 0;
+  const hp = +document.getElementById('inHp').value || 0;
+  if(!name) return;
+  state.combatants.push({ name, type, init, hp, maxHp: hp || 1, conditions: [] });
+  sortByInit();
+  document.getElementById('inName').value = '';
+  document.getElementById('inInit').value = '';
+  document.getElementById('inHp').value = '';
+  scheduleSave(); render();
+});
+
+document.getElementById('nextBtn').addEventListener('click', () => {
+  if(state.combatants.length === 0) return;
+  state.currentIndex++;
+  if(state.currentIndex >= state.combatants.length){
+    state.currentIndex = 0;
+    state.round++;
+  }
+  scheduleSave(); render();
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  document.getElementById('mainBar').style.display = 'none';
+  document.getElementById('resetConfirmBar').style.display = 'flex';
+});
+
+document.getElementById('resetCancelBtn').addEventListener('click', () => {
+  document.getElementById('resetConfirmBar').style.display = 'none';
+  document.getElementById('mainBar').style.display = 'flex';
+});
+
+document.getElementById('resetConfirmBtn').addEventListener('click', () => {
+  state = { combatants: [], currentIndex: 0, round: 1 };
+  editingInitIndex = null;
+  document.getElementById('resetConfirmBar').style.display = 'none';
+  document.getElementById('mainBar').style.display = 'flex';
+  scheduleSave(); render();
+});
+
+loadState();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {
+      // Non-fatal: the app still works fully online without the service worker,
+      // it just won't have offline caching.
+    });
+  });
+}
+</script>
+</body>
+</html>
