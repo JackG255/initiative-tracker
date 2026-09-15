@@ -173,8 +173,11 @@
   .drawer-backdrop{
     position: fixed; inset: 0; background: rgba(8,6,10,0.6);
     opacity: 0; transition: opacity 180ms ease; z-index: 20;
+    /* It lingers for the length of the fade-out before `hidden` lands -- don't
+       let it swallow taps aimed at the bar underneath in the meantime. */
+    pointer-events: none;
   }
-  .drawer-backdrop.open{ opacity: 1; }
+  .drawer-backdrop.open{ opacity: 1; pointer-events: auto; }
   .drawer{
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 21;
     max-width: 560px; margin: 0 auto;
@@ -186,6 +189,10 @@
     transform: translateY(100%);
     transition: transform 200ms ease;
   }
+  /* `display: flex` above outranks the UA stylesheet's [hidden] rule, so the
+     attribute needs saying again -- without this the closed sheet's inputs stay
+     in the tab order, off-screen. */
+  .drawer[hidden]{ display: none; }
   .drawer.open{ transform: translateY(0); }
   .drawer-head{
     display: flex; align-items: center; gap: 8px;
@@ -938,11 +945,12 @@ function openDrawer(tab){
   drawerEl.hidden = false;
   drawerBackdropEl.hidden = false;
   // Let the element lay out at translateY(100%) before the class flips it to 0,
-  // otherwise the browser has nothing to animate from.
-  requestAnimationFrame(() => {
+  // otherwise the browser has nothing to animate from. Two frames, because the
+  // first only gets it out of display:none -- style is not settled until the next.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
     drawerEl.classList.add('open');
     drawerBackdropEl.classList.add('open');
-  });
+  }));
   document.getElementById('mainBar').style.display = 'none';
 }
 
