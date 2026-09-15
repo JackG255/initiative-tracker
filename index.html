@@ -75,7 +75,10 @@
     box-shadow: 0 0 0 1px var(--candle-glow), 0 0 22px var(--candle-glow);
     animation: flicker 2.6s ease-in-out infinite;
   }
-  @media (prefers-reduced-motion: reduce){ .card.active{ animation: none; } }
+  @media (prefers-reduced-motion: reduce){
+    .card.active{ animation: none; }
+    .drawer, .drawer-backdrop{ transition: none; }
+  }
   @keyframes flicker{
     0%,100%{ box-shadow: 0 0 0 1px var(--candle-glow), 0 0 22px var(--candle-glow); }
     50%{ box-shadow: 0 0 0 1px var(--candle-glow), 0 0 12px var(--candle-glow); }
@@ -163,12 +166,64 @@
 
   .remove-btn{ color: var(--blood-bright); }
 
-  /* Add combatant form */
-  .add-form{
-    max-width: 560px; margin: 18px auto 0; background: var(--card); border:1px solid var(--card-border);
-    border-radius:6px; padding: 14px;
+  /* Add-to-encounter drawer.
+     The three add forms used to sit stacked under the list and dominated the
+     page. They now live in one bottom sheet, opened from the main bar, so the
+     combatant list is the only thing competing for attention. */
+  .drawer-backdrop{
+    position: fixed; inset: 0; background: rgba(8,6,10,0.6);
+    opacity: 0; transition: opacity 180ms ease; z-index: 20;
+    /* It lingers for the length of the fade-out before `hidden` lands -- don't
+       let it swallow taps aimed at the bar underneath in the meantime. */
+    pointer-events: none;
   }
-  .add-form h2{ font-size: 0.95rem; margin: 0 0 10px; color: var(--parchment-dim); text-transform:uppercase; letter-spacing:0.12em; }
+  .drawer-backdrop.open{ opacity: 1; pointer-events: auto; }
+  .drawer{
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 21;
+    max-width: 560px; margin: 0 auto;
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 10px 10px 0 0;
+    box-shadow: 0 -12px 34px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column;
+    max-height: 82vh;
+    transform: translateY(100%);
+    transition: transform 200ms ease;
+  }
+  /* `display: flex` above outranks the UA stylesheet's [hidden] rule, so the
+     attribute needs saying again -- without this the closed sheet's inputs stay
+     in the tab order, off-screen. */
+  .drawer[hidden]{ display: none; }
+  .drawer.open{ transform: translateY(0); }
+  .drawer-head{
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--card-border); flex-shrink: 0;
+  }
+  .drawer-tabs{ display: flex; gap: 6px; flex: 1; min-width: 0; }
+  .drawer-tab{
+    flex: 1; background: none; border: 1px solid transparent; border-radius: 5px;
+    color: var(--parchment-dim); cursor: pointer;
+    font-family: 'Cinzel', serif; font-size: 0.82rem; letter-spacing: 0.08em;
+    padding: 8px 4px; text-transform: uppercase;
+  }
+  .drawer-tab.active{ background: var(--ink); border-color: var(--card-border); color: var(--candle); }
+  .drawer-close{
+    flex-shrink: 0; background: none; border: 1px solid var(--card-border); border-radius: 5px;
+    color: var(--parchment-dim); cursor: pointer; font-size: 0.9rem; line-height: 1; padding: 8px 10px;
+  }
+  .drawer-body{ overflow-y: auto; padding: 14px; -webkit-overflow-scrolling: touch; }
+  .drawer-panel{ display: none; }
+  .drawer-panel.active{ display: block; }
+  /* Search is a typing field with a results list under it. Give the panel room so
+     the sheet opens tall, keeping the input clear of the on-screen keyboard. */
+  .drawer-panel[data-panel="monster"].active{ min-height: 42vh; }
+
+  .btn-add-open{ background: #3a3140; color: var(--candle); border: 1px solid var(--candle) !important; }
+
+  .app-footer{
+    max-width: 560px; margin: 22px auto 0; text-align: center;
+    font-size: 0.68rem; color: var(--parchment-dim); opacity: 0.75; line-height: 1.5;
+  }
+  .app-footer a{ color: var(--candle); }
   .form-row{ display:flex; gap:8px; margin-bottom:8px; flex-wrap: wrap; }
   .form-row input, .form-row select{
     background: var(--ink); border: 1px solid var(--card-border); color: var(--parchment);
@@ -288,48 +343,63 @@
 
 <div class="list" id="list"></div>
 
-<div class="add-form">
-  <h2>Your Party</h2>
-  <div class="party-list" id="partyList"></div>
-  <div class="form-row">
-    <input type="text" id="partyName" placeholder="Character name" autocomplete="off">
-    <select id="partyType">
-      <option value="pc">PC</option>
-      <option value="npc">NPC</option>
-      <option value="monster">Monster</option>
-    </select>
-    <button class="roll-btn" id="partySaveBtn">+ Save</button>
-  </div>
-  <button class="party-btn" id="addPartyBtn">⚔ Add the Party</button>
-</div>
+<footer class="app-footer">
+  Monster search via <a href="https://open5e.com" target="_blank" rel="noopener">Open5e</a>. Includes material from the D&amp;D SRD, &copy; Wizards of the Coast, CC-BY-4.0.
+</footer>
 
-<div class="add-form">
-  <h2>Add Monster</h2>
-  <div class="form-row">
-    <input type="text" id="bestiarySearch" placeholder="Search a monster… (e.g. wolf)" autocomplete="off">
-  </div>
-  <div id="bestiaryResults" class="bestiary-results"></div>
-  <div id="bestiaryStatus" class="bestiary-status"></div>
-  <div class="bestiary-attribution">Monster search via <a href="https://open5e.com" target="_blank" rel="noopener">Open5e</a>. Includes material from the D&amp;D SRD, © Wizards of the Coast, CC-BY-4.0.</div>
-</div>
+<div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
 
-<div class="add-form">
-  <h2>Add Combatant</h2>
-  <div class="form-row">
-    <input type="text" name="name" id="inName" placeholder="Name">
-    <select id="inType">
-      <option value="pc">PC</option>
-      <option value="monster">Monster</option>
-      <option value="npc">NPC</option>
-    </select>
+<aside class="drawer" id="drawer" hidden aria-label="Add to encounter">
+  <div class="drawer-head">
+    <div class="drawer-tabs" id="drawerTabs" role="tablist">
+      <button class="drawer-tab" data-tab="party" role="tab">Party</button>
+      <button class="drawer-tab" data-tab="monster" role="tab">Monster</button>
+      <button class="drawer-tab" data-tab="custom" role="tab">Custom</button>
+    </div>
+    <button class="drawer-close" id="drawerCloseBtn" aria-label="Close">&#10005;</button>
   </div>
-  <div class="form-row">
-    <input type="number" name="init" id="inInit" placeholder="Init">
-    <button class="roll-btn" id="rollBtn">🎲 d20</button>
-    <input type="number" name="hp" id="inHp" placeholder="HP">
+
+  <div class="drawer-body">
+    <section class="drawer-panel" data-panel="party">
+      <div class="party-list" id="partyList"></div>
+      <div class="form-row">
+        <input type="text" id="partyName" placeholder="Character name" autocomplete="off">
+        <select id="partyType">
+          <option value="pc">PC</option>
+          <option value="npc">NPC</option>
+          <option value="monster">Monster</option>
+        </select>
+        <button class="roll-btn" id="partySaveBtn">+ Save</button>
+      </div>
+      <button class="party-btn" id="addPartyBtn">&#9876; Add the Party</button>
+    </section>
+
+    <section class="drawer-panel" data-panel="monster">
+      <div class="form-row">
+        <input type="text" id="bestiarySearch" placeholder="Search a monster&hellip; (e.g. wolf)" autocomplete="off">
+      </div>
+      <div id="bestiaryResults" class="bestiary-results"></div>
+      <div id="bestiaryStatus" class="bestiary-status"></div>
+    </section>
+
+    <section class="drawer-panel" data-panel="custom">
+      <div class="form-row">
+        <input type="text" name="name" id="inName" placeholder="Name">
+        <select id="inType">
+          <option value="pc">PC</option>
+          <option value="monster">Monster</option>
+          <option value="npc">NPC</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <input type="number" name="init" id="inInit" placeholder="Init">
+        <button class="roll-btn" id="rollBtn">&#127922; d20</button>
+        <input type="number" name="hp" id="inHp" placeholder="HP">
+      </div>
+      <button class="add-btn" id="addBtn">Add to Encounter</button>
+    </section>
   </div>
-  <button class="add-btn" id="addBtn">Add to Encounter</button>
-</div>
+</aside>
 
 <div class="bottom-bar" id="resetConfirmBar" style="display:none;">
   <span class="reset-confirm-text">Clear the whole encounter?</span>
@@ -339,6 +409,7 @@
 
 <div class="bottom-bar" id="mainBar">
   <button class="btn-reset" id="resetBtn">Reset</button>
+  <button class="btn-add-open" id="drawerOpenBtn">+ Add</button>
   <button class="btn-next" id="nextBtn">Next Turn ▸</button>
 </div>
 
@@ -850,6 +921,64 @@ document.getElementById('partyName').addEventListener('keydown', (e) => {
   if(e.key === 'Enter'){ e.preventDefault(); savePartyMember(); }
 });
 
+// Add-to-encounter drawer. Which tab is showing and whether the sheet is open
+// are view chrome, not encounter data -- they stay out of `state` so nothing
+// new has to be defaulted in sanitizeState() or force a STORAGE_KEY bump.
+// The drawer lives outside #list, so it survives render() and is bound once here
+// rather than in attachCardListeners().
+let drawerTab = 'party';
+const drawerEl = document.getElementById('drawer');
+const drawerBackdropEl = document.getElementById('drawerBackdrop');
+
+function setDrawerTab(tab){
+  drawerTab = tab;
+  document.querySelectorAll('.drawer-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  document.querySelectorAll('.drawer-panel').forEach(pnl => {
+    pnl.classList.toggle('active', pnl.dataset.panel === tab);
+  });
+}
+
+function openDrawer(tab){
+  setDrawerTab(tab || drawerTab);
+  drawerEl.hidden = false;
+  drawerBackdropEl.hidden = false;
+  // Let the element lay out at translateY(100%) before the class flips it to 0,
+  // otherwise the browser has nothing to animate from. Two frames, because the
+  // first only gets it out of display:none -- style is not settled until the next.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    drawerEl.classList.add('open');
+    drawerBackdropEl.classList.add('open');
+  }));
+  document.getElementById('mainBar').style.display = 'none';
+}
+
+function closeDrawer(){
+  drawerEl.classList.remove('open');
+  drawerBackdropEl.classList.remove('open');
+  setTimeout(() => {
+    if(drawerEl.classList.contains('open')) return;
+    drawerEl.hidden = true;
+    drawerBackdropEl.hidden = true;
+  }, 200);
+  // Only restore the main bar if the reset confirmation isn't the one showing.
+  if(document.getElementById('resetConfirmBar').style.display === 'none'){
+    document.getElementById('mainBar').style.display = '';
+  }
+}
+
+document.getElementById('drawerOpenBtn').addEventListener('click', () => openDrawer());
+document.getElementById('drawerCloseBtn').addEventListener('click', closeDrawer);
+drawerBackdropEl.addEventListener('click', closeDrawer);
+document.querySelectorAll('.drawer-tab').forEach(b => {
+  b.addEventListener('click', () => setDrawerTab(b.dataset.tab));
+});
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && !drawerEl.hidden) closeDrawer();
+});
+setDrawerTab(drawerTab);
+
 document.getElementById('addPartyBtn').addEventListener('click', () => {
   const existingNames = new Set(state.combatants.map(c => c.name.trim().toLowerCase()));
   state.party.forEach(p => {
@@ -858,6 +987,7 @@ document.getElementById('addPartyBtn').addEventListener('click', () => {
   });
   sortByInit();
   scheduleSave(); render();
+  closeDrawer();
 });
 
 document.getElementById('rollBtn').addEventListener('click', () => {
@@ -876,6 +1006,7 @@ document.getElementById('addBtn').addEventListener('click', () => {
   document.getElementById('inInit').value = '';
   document.getElementById('inHp').value = '';
   scheduleSave(); render();
+  closeDrawer();
 });
 
 document.getElementById('nextBtn').addEventListener('click', () => {
