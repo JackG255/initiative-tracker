@@ -191,6 +191,22 @@
     border-radius:5px; padding: 11px; font-size: 1rem; font-family:'Cinzel',serif;
     letter-spacing:0.06em; cursor:pointer;
   }
+  .party-btn:disabled{ opacity:0.45; cursor:default; }
+  /* When the row wraps at phone width, Save is alone on line two -- let it fill it. */
+  #partySaveBtn{ flex-grow:1; }
+  .party-list{ display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+  .party-member{
+    display:flex; align-items:center; gap:8px;
+    background: var(--ink); border:1px solid var(--card-border); border-radius:5px;
+    padding:8px 10px;
+  }
+  .party-member-name{ flex:1; min-width:0; overflow-wrap:anywhere; }
+  .party-member-type{ font-size:0.7rem; color: var(--candle); letter-spacing:0.08em; flex-shrink:0; }
+  .party-member-remove{
+    background:none; border:none; color: var(--parchment-dim); cursor:pointer;
+    font-size:1rem; line-height:1; padding:0 4px; flex-shrink:0;
+  }
+  .party-empty{ color: var(--parchment-dim); font-size:0.85rem; margin-bottom:10px; }
 
   #bestiarySearch{
     width:100%; background: var(--ink); border: 1px solid var(--card-border); color: var(--parchment);
@@ -273,6 +289,17 @@
 <div class="list" id="list"></div>
 
 <div class="add-form">
+  <h2>Your Party</h2>
+  <div class="party-list" id="partyList"></div>
+  <div class="form-row">
+    <input type="text" id="partyName" placeholder="Character name" autocomplete="off">
+    <select id="partyType">
+      <option value="pc">PC</option>
+      <option value="npc">NPC</option>
+      <option value="monster">Monster</option>
+    </select>
+    <button class="roll-btn" id="partySaveBtn">+ Save</button>
+  </div>
   <button class="party-btn" id="addPartyBtn">⚔ Add the Party</button>
 </div>
 
@@ -317,7 +344,7 @@
 
 <script>
 const STORAGE_KEY = 'encounter-state-v1';
-let state = { combatants: [], currentIndex: 0, round: 1 };
+let state = { combatants: [], currentIndex: 0, round: 1, party: [] };
 let editingInitIndex = null;
 
 function sanitizeCombatant(c){
@@ -328,8 +355,20 @@ function sanitizeCombatant(c){
   c.conditions = Array.isArray(c.conditions) ? c.conditions : [];
   return c;
 }
+// The roster is user-created and lives in state, so it rides the same save/load
+// path as the encounter. Stored state written before the roster existed has no
+// `party` key at all -- default it here rather than assuming it exists.
+const PARTY_TYPES = ['pc', 'monster', 'npc'];
+function sanitizePartyMember(m){
+  const name = (m && typeof m.name === 'string') ? m.name.trim() : '';
+  const type = (m && PARTY_TYPES.includes(m.type)) ? m.type : 'pc';
+  return { name, type };
+}
 function sanitizeState(){
   state.combatants = state.combatants.map(sanitizeCombatant);
+  state.party = Array.isArray(state.party)
+    ? state.party.map(sanitizePartyMember).filter(m => m.name)
+    : [];
   if(!Number.isFinite(state.currentIndex)) state.currentIndex = 0;
   if(!Number.isFinite(state.round)) state.round = 1;
 }
@@ -448,6 +487,7 @@ function render(){
   sanitizeState();
   const list = document.getElementById('list');
   document.getElementById('roundDisplay').textContent = 'Round ' + toRoman(state.round);
+  renderParty();
 
   if(state.combatants.length === 0){
     list.innerHTML = '<div class="empty">No combatants yet. The mist stirs, but nothing waits within it.</div>';
@@ -772,18 +812,47 @@ document.getElementById('bestiarySearch').addEventListener('input', (e) => {
 });
 
 
-const PARTY_ROSTER = [
-  { name: 'Edmund', type: 'pc' },
-  { name: 'Futrimus', type: 'pc' },
-  { name: 'Zaryth', type: 'pc' },
-  { name: 'Zarvex', type: 'pc' },
-  { name: 'Aldric', type: 'pc' },
-  { name: 'Ireena', type: 'npc' }
-];
+function renderParty(){
+  const wrap = document.getElementById('partyList');
+  if(state.party.length === 0){
+    wrap.innerHTML = '<div class="party-empty">No party yet. Add your characters below \u2014 they are saved on this device and survive a Reset.</div>';
+  } else {
+    wrap.innerHTML = state.party.map((m, i) =>
+      '<div class="party-member">' +
+        '<span class="party-member-name">' + escapeHtml(m.name) + '</span>' +
+        '<span class="party-member-type">' + escapeHtml(m.type.toUpperCase()) + '</span>' +
+        '<button class="party-member-remove" data-party-remove="' + i + '" title="Remove from party">\u2715</button>' +
+      '</div>').join('');
+  }
+  document.getElementById('addPartyBtn').disabled = state.party.length === 0;
+  // Full redraw, same as the combatant cards -- re-bind every time, hold no refs.
+  wrap.querySelectorAll('[data-party-remove]').forEach(b => b.addEventListener('click', () => {
+    state.party.splice(+b.dataset.partyRemove, 1);
+    scheduleSave(); renderParty();
+  }));
+}
+
+function savePartyMember(){
+  const input = document.getElementById('partyName');
+  const name = input.value.trim();
+  if(!name) return;
+  const type = document.getElementById('partyType').value;
+  if(!state.party.some(m => m.name.toLowerCase() === name.toLowerCase())){
+    state.party.push({ name, type });
+  }
+  input.value = '';
+  input.focus();
+  scheduleSave(); renderParty();
+}
+
+document.getElementById('partySaveBtn').addEventListener('click', savePartyMember);
+document.getElementById('partyName').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); savePartyMember(); }
+});
 
 document.getElementById('addPartyBtn').addEventListener('click', () => {
   const existingNames = new Set(state.combatants.map(c => c.name.trim().toLowerCase()));
-  PARTY_ROSTER.forEach(p => {
+  state.party.forEach(p => {
     if(existingNames.has(p.name.toLowerCase())) return;
     state.combatants.push({ name: p.name, type: p.type, init: 0, hp: 0, maxHp: 1, conditions: [] });
   });
@@ -830,7 +899,8 @@ document.getElementById('resetCancelBtn').addEventListener('click', () => {
 });
 
 document.getElementById('resetConfirmBtn').addEventListener('click', () => {
-  state = { combatants: [], currentIndex: 0, round: 1 };
+  // The roster is not part of the encounter -- Reset clears combatants, not the party.
+  state = { combatants: [], currentIndex: 0, round: 1, party: state.party };
   editingInitIndex = null;
   document.getElementById('resetConfirmBar').style.display = 'none';
   document.getElementById('mainBar').style.display = 'flex';
