@@ -42,7 +42,16 @@
   h1,h2,.mono{ font-family: 'Cinzel', serif; letter-spacing: 0.04em; }
   .mono-num{ font-family: 'IBM Plex Mono', monospace; }
 
-  header{ text-align:center; margin-bottom: 18px; }
+  header{ text-align:center; margin-bottom: 18px; position: relative; }
+  /* The header is centred text, so the gear is taken out of flow -- it must not
+     shift the title or the round counter off centre. */
+  .settings-btn{
+    position: absolute; top: -2px; right: 0;
+    background: none; border: 1px solid var(--card-border); border-radius: 5px;
+    color: var(--parchment-dim); cursor: pointer;
+    font-size: 1rem; line-height: 1; padding: 7px 9px;
+  }
+  .settings-btn:active{ background: var(--card-border); }
   header .title{
     font-size: 1.05rem;
     color: var(--parchment-dim);
@@ -241,6 +250,11 @@
     padding: 10px 12px; border-bottom: 1px solid var(--card-border); flex-shrink: 0;
   }
   .drawer-tabs{ display: flex; gap: 6px; flex: 1; min-width: 0; }
+  .drawer-title{
+    flex: 1; min-width: 0; color: var(--candle);
+    font-family: 'Cinzel', serif; font-size: 0.85rem;
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
   .drawer-tab{
     flex: 1; background: none; border: 1px solid transparent; border-radius: 5px;
     color: var(--parchment-dim); cursor: pointer;
@@ -375,6 +389,7 @@
 <body>
 
 <header>
+  <button class="settings-btn" id="rulesOpenBtn" aria-label="Automatic rules" title="Automatic rules">&#9881;</button>
   <p class="title">Initiative Tracker</p>
   <h1 class="round" id="roundDisplay">Round I</h1>
 </header>
@@ -397,7 +412,6 @@
       <button class="drawer-tab" data-tab="party" role="tab">Party</button>
       <button class="drawer-tab" data-tab="monster" role="tab">Monster</button>
       <button class="drawer-tab" data-tab="custom" role="tab">Custom</button>
-      <button class="drawer-tab" data-tab="rules" role="tab">Rules</button>
     </div>
     <button class="drawer-close" id="drawerCloseBtn" aria-label="Close">&#10005;</button>
   </div>
@@ -442,9 +456,16 @@
       <button class="add-btn" id="addBtn">Add to Encounter</button>
     </section>
 
-    <section class="drawer-panel" data-panel="rules">
-      <div class="rules-list" id="rulesList"></div>
-    </section>
+  </div>
+</aside>
+
+<aside class="drawer" id="rulesDrawer" hidden aria-label="Automatic rules">
+  <div class="drawer-head">
+    <span class="drawer-title">Automatic Rules</span>
+    <button class="drawer-close" id="rulesCloseBtn" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="drawer-body">
+    <div class="rules-list" id="rulesList"></div>
   </div>
 </aside>
 
@@ -1104,6 +1125,7 @@ document.getElementById('partyName').addEventListener('keydown', (e) => {
 let drawerTab = 'party';
 const drawerEl = document.getElementById('drawer');
 const drawerBackdropEl = document.getElementById('drawerBackdrop');
+const rulesDrawerEl = document.getElementById('rulesDrawer');
 
 function setDrawerTab(tab){
   drawerTab = tab;
@@ -1115,26 +1137,28 @@ function setDrawerTab(tab){
   });
 }
 
-function openDrawer(tab){
-  setDrawerTab(tab || drawerTab);
-  drawerEl.hidden = false;
+// The add drawer and the rules sheet are the same bottom sheet with different
+// contents, so they share one open/close pair and one backdrop.
+function openSheet(el){
+  el.hidden = false;
   drawerBackdropEl.hidden = false;
   // Let the element lay out at translateY(100%) before the class flips it to 0,
   // otherwise the browser has nothing to animate from. Two frames, because the
   // first only gets it out of display:none -- style is not settled until the next.
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    drawerEl.classList.add('open');
+    el.classList.add('open');
     drawerBackdropEl.classList.add('open');
   }));
   document.getElementById('mainBar').style.display = 'none';
 }
 
-function closeDrawer(){
-  drawerEl.classList.remove('open');
+function closeSheet(el){
+  if(el.hidden) return;
+  el.classList.remove('open');
   drawerBackdropEl.classList.remove('open');
   setTimeout(() => {
-    if(drawerEl.classList.contains('open')) return;
-    drawerEl.hidden = true;
+    if(el.classList.contains('open')) return;
+    el.hidden = true;
     drawerBackdropEl.hidden = true;
   }, 200);
   // Only restore the main bar if the reset confirmation isn't the one showing.
@@ -1143,14 +1167,29 @@ function closeDrawer(){
   }
 }
 
+function openDrawer(tab){
+  setDrawerTab(tab || drawerTab);
+  openSheet(drawerEl);
+}
+
+function closeDrawer(){ closeSheet(drawerEl); }
+
 document.getElementById('drawerOpenBtn').addEventListener('click', () => openDrawer());
 document.getElementById('drawerCloseBtn').addEventListener('click', closeDrawer);
-drawerBackdropEl.addEventListener('click', closeDrawer);
+document.getElementById('rulesOpenBtn').addEventListener('click', () => openSheet(rulesDrawerEl));
+document.getElementById('rulesCloseBtn').addEventListener('click', () => closeSheet(rulesDrawerEl));
+// The backdrop sits under whichever sheet is up, so it dismisses either.
+drawerBackdropEl.addEventListener('click', () => {
+  closeDrawer();
+  closeSheet(rulesDrawerEl);
+});
 document.querySelectorAll('.drawer-tab').forEach(b => {
   b.addEventListener('click', () => setDrawerTab(b.dataset.tab));
 });
 document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape' && !drawerEl.hidden) closeDrawer();
+  if(e.key !== 'Escape') return;
+  closeDrawer();
+  closeSheet(rulesDrawerEl);
 });
 setDrawerTab(drawerTab);
 
