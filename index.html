@@ -146,7 +146,7 @@
   }
   .icon-btn:active{ background: var(--card-border); }
 
-  .hp-adjust{ display:flex; gap:6px; margin-top:8px; }
+  .hp-adjust{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .hp-adjust input{
     width: 52px; background: var(--ink); border:1px solid var(--card-border); color: var(--parchment);
     border-radius:4px; padding:5px 6px; font-family:'IBM Plex Mono',monospace; text-align:center;
@@ -156,6 +156,7 @@
   }
   .btn-dmg{ background: var(--danger); }
   .btn-heal{ background: var(--heal); }
+  .btn-temp{ background: var(--temp); }
   .btn-cond{ background: #3a3140; }
 
   .add-cond-input{
@@ -603,6 +604,7 @@ function render(){
           <input type="number" placeholder="amt" id="amt-${i}">
           <button class="btn-dmg" data-dmg="${i}">Dmg</button>
           <button class="btn-heal" data-heal="${i}">Heal</button>
+          <button class="btn-temp" data-temp="${i}">Temp</button>
           <button class="btn-cond" data-cond="${i}">+ Cond</button>
         </div>
         <div class="add-cond-input" id="condInput-${i}">
@@ -670,10 +672,16 @@ function attachCardListeners(){
     const i = +b.dataset.heal;
     const amt = +document.getElementById('amt-'+i).value || 1;
     const c = state.combatants[i];
-    // Anything healed above maxHp becomes temp HP rather than being thrown away.
-    const overflow = Math.max(0, c.hp + amt - c.maxHp);
     c.hp = Math.min(c.maxHp, c.hp + amt);
-    c.tempHp = (c.tempHp || 0) + overflow;
+    scheduleSave(); render();
+  }));
+  // Temp HP is granted outright, not earned by overhealing -- a combatant can
+  // pick it up at any HP, so it gets its own button rather than riding on Heal.
+  document.querySelectorAll('[data-temp]').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.temp;
+    const amt = +document.getElementById('amt-'+i).value || 1;
+    const c = state.combatants[i];
+    c.tempHp = Math.max(0, (c.tempHp || 0) + amt);
     scheduleSave(); render();
   }));
   document.querySelectorAll('[data-cond]').forEach(b => b.addEventListener('click', () => {
