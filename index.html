@@ -642,6 +642,11 @@ function renderRules(){
     </label>`).join('');
   wrap.querySelectorAll('[data-rule]').forEach(cb => cb.addEventListener('change', () => {
     state.rules[cb.dataset.rule] = cb.checked;
+    // Turning the rule off only hides these, so clear them too -- otherwise a
+    // pending save from rounds ago reappears the moment it is switched back on.
+    if(cb.dataset.rule === 'concentration' && !cb.checked){
+      state.combatants.forEach(c => { c.concentrating = false; c.concSaveDc = 0; });
+    }
     scheduleSave(); render();
   }));
 }
