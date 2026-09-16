@@ -46,7 +46,10 @@ subpath, not from the domain root. That drives several rules:
   HTML either) against a `NAV_TIMEOUT_MS` fallback to the cached shell, so a launch
   with any working connection gets the current deploy. That is a safety net, not a
   licence to skip the `CACHE_NAME` bump: it does nothing for a client that is already
-  open, and offline launches still come from whatever the cache holds.
+  open, offline launches still come from whatever the cache holds, and an installed
+  client on an older worker gets one more stale launch after you deploy — the old
+  cache-first worker serves that navigation while the browser fetches the new worker
+  script alongside it, so network-first only applies from the launch after.
 - Pages serves over HTTPS, which the service worker requires. A deploy takes a minute
   or two to go live, and clients with the app already installed pick it up only after
   the worker updates.

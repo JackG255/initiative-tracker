@@ -37,7 +37,8 @@ const NAV_TIMEOUT_MS = 2500;
 // the browser's own HTTP cache, and Pages serves HTML with a max-age -- we would
 // sidestep this worker only to get stale bytes from the layer underneath. It
 // forces an ETag revalidation, so the common case is a cheap 304.
-function freshShell(request) {
+function freshShell(event) {
+  const request = event.request;
   // A navigation to the scope root and the precached './index.html' are separate
   // cache keys, so a cold offline launch has to try both.
   const fromCache = () =>
@@ -49,7 +50,10 @@ function freshShell(request) {
     .then((response) => {
       if (!response.ok) return fromCache().then((cached) => cached || response);
       const clone = response.clone();
-      caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+      // waitUntil, not a bare promise: when the timeout wins the race the worker
+      // becomes eligible for termination the moment respondWith settles, and an
+      // un-awaited put would drop exactly the fresh shell we want offline next time.
+      event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)));
       return response;
     })
     // Offline rejects immediately -- no reason to sit out the timeout.
@@ -72,7 +76,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (event.request.mode === 'navigate') {
-    event.respondWith(freshShell(event.request));
+    event.respondWith(freshShell(event));
     return;
   }
 
