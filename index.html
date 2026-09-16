@@ -137,6 +137,25 @@
      overflow segment gets its own colour rather than extending the green. */
   .hp-bar-fill.temp{ background: var(--temp); }
   .hp-text{ font-size: 0.85rem; color: var(--parchment-dim); white-space:nowrap; }
+  /* The HP readout doubles as the maxHp editor, so it is a button wearing the
+     span's clothes -- browser button chrome would fight the card. */
+  button.hp-text{
+    appearance:none; background:none; border:none; padding:0;
+    font-family: 'IBM Plex Mono', monospace; cursor:pointer;
+  }
+  button.hp-text:active{ color: var(--parchment); }
+  .hp-edit{
+    width: 52px;
+    text-align:center;
+    font-size: 0.85rem;
+    color: var(--ink);
+    background: var(--candle);
+    border: 2px solid var(--ink);
+    border-radius: 5px;
+    padding: 1px 2px;
+    flex-shrink:0;
+    font-family: 'IBM Plex Mono', monospace;
+  }
 
   .chips{ display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
   .chip{
@@ -499,6 +518,7 @@ function sanitizeRules(r){
 
 let state = { combatants: [], currentIndex: 0, round: 1, party: [], rules: sanitizeRules(null) };
 let editingInitIndex = null;
+let editingHpIndex = null;
 
 function sanitizeCombatant(c){
   // Until the rename this was never validated, and it is interpolated into the
@@ -752,7 +772,10 @@ function render(){
         </div>
         <div class="hp-row">
           <div class="hp-bar-track"><div class="hp-bar-fill ${lowClass}" style="width:${hpPct}%"></div><div class="hp-bar-fill temp" style="width:${tempPct}%"></div></div>
-          <span class="hp-text mono-num">${c.hp}/${c.maxHp}${temp > 0 ? ' +' + temp : ''}</span>
+          ${i === editingHpIndex
+            ? `<input type="number" class="hp-edit mono-num" id="hpEdit-${i}" value="${c.maxHp}" inputmode="numeric" min="1">`
+            : `<button class="hp-text mono-num" data-edit-hp="${i}" title="Edit max HP">${c.hp}/${c.maxHp}${temp > 0 ? ' +' + temp : ''}</button>`
+          }
         </div>
         <div class="chips">${chips}</div>${concSave}
         <div class="hp-adjust">
@@ -787,6 +810,27 @@ function render(){
     const inp = document.getElementById('initEdit-' + editingInitIndex);
     if(inp){ inp.focus(); inp.select(); }
   }
+
+  if(editingHpIndex !== null){
+    const inp = document.getElementById('hpEdit-' + editingHpIndex);
+    if(inp){ inp.focus(); inp.select(); }
+  }
+}
+
+// Lowering maxHp has to pull current HP down with it: `sanitizeCombatant` raises
+// maxHp back up to hp on every save, so an unclamped decrease would silently undo
+// itself. Floor at 1 for the same reason -- maxHp <= 0 gets replaced there too.
+function commitHpEdit(i){
+  const input = document.getElementById('hpEdit-' + i);
+  if(!input){ editingHpIndex = null; return; }
+  const val = parseInt(input.value, 10);
+  if(Number.isFinite(val)){
+    const c = state.combatants[i];
+    c.maxHp = Math.max(1, val);
+    c.hp = Math.min(c.hp, c.maxHp);
+  }
+  editingHpIndex = null;
+  scheduleSave(); render();
 }
 
 function commitInitEdit(i){
@@ -818,6 +862,18 @@ function attachCardListeners(){
       if(e.key === 'Escape'){ editingInitIndex = null; render(); }
     });
     inp.addEventListener('blur', () => commitInitEdit(i));
+  });
+  document.querySelectorAll('[data-edit-hp]').forEach(b => b.addEventListener('click', () => {
+    editingHpIndex = +b.dataset.editHp;
+    render();
+  }));
+  document.querySelectorAll('.hp-edit').forEach(inp => {
+    const i = +inp.id.replace('hpEdit-', '');
+    inp.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter'){ inp.blur(); commitHpEdit(i); }
+      if(e.key === 'Escape'){ editingHpIndex = null; render(); }
+    });
+    inp.addEventListener('blur', () => commitHpEdit(i));
   });
   document.querySelectorAll('[data-dmg]').forEach(b => b.addEventListener('click', () => {
     const i = +b.dataset.dmg;
@@ -1214,7 +1270,11 @@ document.getElementById('addPartyBtn').addEventListener('click', () => {
   const existingNames = new Set(state.combatants.map(c => c.name.trim().toLowerCase()));
   state.party.forEach(p => {
     if(existingNames.has(p.name.toLowerCase())) return;
-    state.combatants.push({ name: p.name, type: p.type, init: 0, hp: 0, maxHp: 1, tempHp: 0, conditions: [] });
+    // 2/2 rather than 0/1: the DM fills in the real total from the HP readout, and
+    // in the meantime both derived chips stay reachable. At maxHp 1 nothing is ever
+    // bloodied (hp*2 <= maxHp cannot hold above 0) and hp 0 reads as Unconscious
+    // the moment the party is added.
+    state.combatants.push({ name: p.name, type: p.type, init: 0, hp: 2, maxHp: 2, tempHp: 0, conditions: [] });
   });
   sortByInit();
   scheduleSave(); render();
@@ -1279,6 +1339,7 @@ document.getElementById('resetConfirmBtn').addEventListener('click', () => {
   // Neither the roster nor the rule settings belong to one encounter.
   state = { combatants: [], currentIndex: 0, round: 1, party: state.party, rules: state.rules };
   editingInitIndex = null;
+  editingHpIndex = null;
   document.getElementById('resetConfirmBar').style.display = 'none';
   document.getElementById('mainBar').style.display = 'flex';
   scheduleSave(); render();
