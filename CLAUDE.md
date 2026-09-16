@@ -41,6 +41,12 @@ subpath, not from the domain root. That drives several rules:
   the icons change.** The `activate` handler deletes caches whose name doesn't match,
   so the bump is what evicts stale shells from installed clients. Skip it and users
   keep running the old app after you deploy.
+- **Navigations are network-first**, unlike every other request. `freshShell()` races
+  the network (`cache: 'no-cache'`, so the browser's own HTTP cache can't serve stale
+  HTML either) against a `NAV_TIMEOUT_MS` fallback to the cached shell, so a launch
+  with any working connection gets the current deploy. That is a safety net, not a
+  licence to skip the `CACHE_NAME` bump: it does nothing for a client that is already
+  open, and offline launches still come from whatever the cache holds.
 - Pages serves over HTTPS, which the service worker requires. A deploy takes a minute
   or two to go live, and clients with the app already installed pick it up only after
   the worker updates.
