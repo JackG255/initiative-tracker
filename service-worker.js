@@ -24,6 +24,48 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// How long a launch waits for the network before falling back to the cached
+// shell. Long enough for a slow-but-working connection to win, short enough that
+// a captive portal or a dead tunnel doesn't visibly stall the app.
+const NAV_TIMEOUT_MS = 2500;
+
+// The stale app shell is the one cache hit users actually notice, so the document
+// is network-first: the newest deploy wins whenever the network answers at all,
+// and the cache is the fallback rather than the default.
+//
+// `cache: 'no-cache'` is not optional. Without it fetch() can be answered from
+// the browser's own HTTP cache, and Pages serves HTML with a max-age -- we would
+// sidestep this worker only to get stale bytes from the layer underneath. It
+// forces an ETag revalidation, so the common case is a cheap 304.
+function freshShell(event) {
+  const request = event.request;
+  // A navigation to the scope root and the precached './index.html' are separate
+  // cache keys, so a cold offline launch has to try both.
+  const fromCache = () =>
+    caches.match(request)
+      .then((r) => r || caches.match('./index.html'))
+      .then((r) => r || caches.match('./'));
+
+  const fromNetwork = fetch(request, { cache: 'no-cache' })
+    .then((response) => {
+      if (!response.ok) return fromCache().then((cached) => cached || response);
+      const clone = response.clone();
+      // waitUntil, not a bare promise: when the timeout wins the race the worker
+      // becomes eligible for termination the moment respondWith settles, and an
+      // un-awaited put would drop exactly the fresh shell we want offline next time.
+      event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)));
+      return response;
+    })
+    // Offline rejects immediately -- no reason to sit out the timeout.
+    .catch(() => fromCache());
+
+  const onTimeout = new Promise((resolve) => {
+    setTimeout(() => resolve(fromCache().then((cached) => cached || fromNetwork)), NAV_TIMEOUT_MS);
+  });
+
+  return Promise.race([fromNetwork, onTimeout]);
+}
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -32,6 +74,11 @@ self.addEventListener('fetch', (event) => {
   // network untouched, so search results are always fresh and the app's own
   // "can't reach the live bestiary" fallback still works correctly.
   if (url.origin !== self.location.origin) return;
+
+  if (event.request.mode === 'navigate') {
+    event.respondWith(freshShell(event));
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
